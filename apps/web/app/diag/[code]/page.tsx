@@ -91,7 +91,7 @@ export default function DiagPage() {
         </span>
       </h1>
       <p className="sub">
-        Beat every {BEAT_INTERVAL_MS} ms, hit window ±{BEAT_WINDOW_MS} ms. Party host <code>{partyHost()}</code>.
+        Beat every {BEAT_INTERVAL_MS} ms, hit window ±{BEAT_WINDOW_MS} ms. Room server <code>{partyHost()}</code>.
       </p>
 
       <div className="row" style={{ marginBottom: 12 }}>

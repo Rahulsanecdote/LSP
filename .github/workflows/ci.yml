@@ -37,6 +37,7 @@ jobs:
       - run: pnpm --filter @lsp/web e2e
         env:
           CI: "1"
+          WRANGLER_SEND_METRICS: "false"
       - uses: actions/upload-artifact@v5
         if: always()
         with:
