@@ -30,8 +30,18 @@ export const SCHEDULE_REBROADCAST_MS = 20_000;
 /** Clients re-run a clock sync burst this often. */
 export const SYNC_INTERVAL_MS = 10_000;
 
-/** Round trips per sync burst; the estimator needs at least this many before it reports. */
+/** Accepted samples the estimator needs before it reports an offset. */
 export const SYNC_MIN_SAMPLES = 4;
+
+/**
+ * Round trips per sync burst. Eight rather than the minimum four so each burst also yields
+ * seven server-measured round trips for the audit column (amendment 4); the first burst alone
+ * would otherwise leave the audit on a three-sample rtt for ten seconds.
+ */
+export const SYNC_BURST = 8;
+
+/** Sliding window of accepted sync samples (amendment 5). */
+export const SYNC_WINDOW = 24;
 
 /** Samples whose rtt exceeds this multiple of the running median rtt are rejected. */
 export const SYNC_RTT_REJECT_FACTOR = 2;

@@ -1,4 +1,4 @@
-import type { RoomState, TapRecord } from "@lsp/party";
+import type { RoomCore, TapRecord } from "@lsp/party";
 import { BEAT_INTERVAL_MS, BEAT_WINDOW_MS, ROLES, beatTime, median, type Role } from "@lsp/protocol";
 import { SimClient } from "./client.js";
 import { DEFAULT_LINKS, type LinkModel } from "./net.js";
@@ -47,6 +47,8 @@ export interface ClientReport {
   trueOffset: number;
   /** estimated − true offset at the end of the run */
   syncErrorMs: number;
+  /** the server's estimate of −syncErrorMs from the audit column, null if no audited taps */
+  serverSyncBiasMs: number | null;
   taps: number;
   hits: number;
   meanDeltaMs: number;
@@ -62,6 +64,13 @@ export interface BeatRow {
   /** ground-truth delta per client: true room time of the tap minus the beat */
   trueDeltas: number[];
   trueSpread: number;
+  /** server audit delta per client (amendment 4); null where the connection had no rtt yet */
+  auditDeltas: (number | null)[];
+  /** null when any client lacks an audit delta on this beat */
+  auditSpread: number | null;
+  /** deltaMs + the server's per-client sync-bias estimate at the END of the run */
+  correctedDeltas: (number | null)[];
+  correctedSpread: number | null;
 }
 
 export interface SpreadReport {
@@ -87,6 +96,36 @@ export interface SpreadReport {
   trueP90: number;
   trueMax: number;
   trueHistogram: HistogramBucket[];
+  /**
+   * The server's audit column (amendment 4): `receivedAt − medianRtt/2` per tap, from round
+   * trips the server measured itself. This is what the real-device criterion is read from, so
+   * its agreement with ground truth is what makes that reading trustworthy.
+   */
+  auditSpreads: number[];
+  auditFractionUnder: number;
+  auditP50: number;
+  auditP90: number;
+  auditMax: number;
+  auditHistogram: HistogramBucket[];
+  /** |auditServerTime − true tap instant| over every audited tap: the audit column's own error */
+  auditErrorP50: number;
+  auditErrorP90: number;
+  auditErrorMax: number;
+  /**
+   * Bias-corrected column: deltaMs + the server's per-client syncBiasMs (median of audit − scored
+   * delta). Per-tap transit jitter averages out of the bias, so this tracks ground truth far more
+   * closely than the raw audit while still exposing a client whose sync is wrong.
+   */
+  correctedSpreads: number[];
+  correctedFractionUnder: number;
+  correctedP50: number;
+  correctedP90: number;
+  correctedMax: number;
+  correctedHistogram: HistogramBucket[];
+  /** |correctedDelta − trueDelta| over measured taps */
+  correctedErrorP50: number;
+  correctedErrorP90: number;
+  correctedErrorMax: number;
   clients: ClientReport[];
   pass: boolean;
   /** virtual ms simulated */
@@ -155,12 +194,12 @@ export function runSpread(config: SpreadConfig): SpreadReport {
   while (t < maxMs) {
     t += BEAT_INTERVAL_MS * 5;
     sim.run(t);
-    ({ rows, firstMeasuredBeat } = collectRows(server.core.state, sims, config.beats));
+    ({ rows, firstMeasuredBeat } = collectRows(server.core, sims, config.beats));
     if (rows.length >= config.beats) break;
   }
   // let the last taps land
   sim.run(t + 2000);
-  ({ rows, firstMeasuredBeat } = collectRows(server.core.state, sims, config.beats));
+  ({ rows, firstMeasuredBeat } = collectRows(server.core, sims, config.beats));
 
   const spreads = rows.map((r) => r.spread);
   const sorted = [...spreads].sort((a, b) => a - b);
@@ -170,6 +209,25 @@ export function runSpread(config: SpreadConfig): SpreadReport {
   const trueSorted = [...trueSpreads].sort((a, b) => a - b);
   const trueUnder = trueSpreads.filter((s) => s < thresholdMs).length;
   const trueFractionUnder = trueSpreads.length ? trueUnder / trueSpreads.length : 0;
+  const auditSpreads = rows.flatMap((r) => (r.auditSpread === null ? [] : [r.auditSpread]));
+  const auditSorted = [...auditSpreads].sort((a, b) => a - b);
+  const auditUnder = auditSpreads.filter((s) => s < thresholdMs).length;
+  const auditFractionUnder = auditSpreads.length ? auditUnder / auditSpreads.length : 0;
+  const correctedSpreads = rows.flatMap((r) => (r.correctedSpread === null ? [] : [r.correctedSpread]));
+  const correctedSorted = [...correctedSpreads].sort((a, b) => a - b);
+  const correctedUnder = correctedSpreads.filter((s) => s < thresholdMs).length;
+  const correctedFractionUnder = correctedSpreads.length ? correctedUnder / correctedSpreads.length : 0;
+  const correctedErrors = rows
+    .flatMap((r) => r.correctedDeltas.flatMap((c, i) => (c === null ? [] : [Math.abs(c - (r.trueDeltas[i] as number))])))
+    .sort((a, b) => a - b);
+  const truthOf = new Map(sims.map((c) => [c.cid, c.truth]));
+  const auditErrors = server.core.state.tapLog
+    .flatMap((r) => {
+      if (r.auditServerTime === null) return [];
+      const trueTime = truthOf.get(r.cid)?.get(r.cServerEst);
+      return trueTime === undefined ? [] : [Math.abs(r.auditServerTime - trueTime)];
+    })
+    .sort((a, b) => a - b);
 
   const clients: ClientReport[] = sims.map((c, i) => {
     const taps = server.core.state.tapLog.filter((r) => r.cid === c.cid);
@@ -182,6 +240,10 @@ export function runSpread(config: SpreadConfig): SpreadReport {
       link: profile.link,
       trueOffset: -c.localNow() + sim.now, // = -trueOffset; shown as offset to add to local
       syncErrorMs: est ? est.offset - (sim.now - c.localNow()) : Number.NaN,
+      serverSyncBiasMs: (() => {
+        const p = server.core.state.players[c.cid];
+        return p ? server.core.syncBiasOf(p) : null;
+      })(),
       taps: taps.length,
       hits: taps.filter((r) => r.hit).length,
       meanDeltaMs: deltas.length ? deltas.reduce((a, b) => a + b, 0) / deltas.length : Number.NaN,
@@ -208,6 +270,24 @@ export function runSpread(config: SpreadConfig): SpreadReport {
     trueP90: percentile(trueSorted, 0.9),
     trueMax: trueSorted.length ? (trueSorted[trueSorted.length - 1] as number) : Number.NaN,
     trueHistogram: histogram(trueSpreads),
+    auditSpreads,
+    auditFractionUnder,
+    auditP50: percentile(auditSorted, 0.5),
+    auditP90: percentile(auditSorted, 0.9),
+    auditMax: auditSorted.length ? (auditSorted[auditSorted.length - 1] as number) : Number.NaN,
+    auditHistogram: histogram(auditSpreads),
+    auditErrorP50: percentile(auditErrors, 0.5),
+    auditErrorP90: percentile(auditErrors, 0.9),
+    auditErrorMax: auditErrors.length ? (auditErrors[auditErrors.length - 1] as number) : Number.NaN,
+    correctedSpreads,
+    correctedFractionUnder,
+    correctedP50: percentile(correctedSorted, 0.5),
+    correctedP90: percentile(correctedSorted, 0.9),
+    correctedMax: correctedSorted.length ? (correctedSorted[correctedSorted.length - 1] as number) : Number.NaN,
+    correctedHistogram: histogram(correctedSpreads),
+    correctedErrorP50: percentile(correctedErrors, 0.5),
+    correctedErrorP90: percentile(correctedErrors, 0.9),
+    correctedErrorMax: correctedErrors.length ? (correctedErrors[correctedErrors.length - 1] as number) : Number.NaN,
     clients,
     pass: rows.length >= config.beats && fractionUnder >= requiredFraction && n > 0,
     simulatedMs: sim.now,
@@ -218,42 +298,61 @@ export function runSpread(config: SpreadConfig): SpreadReport {
 
 /** Group the tap log by beat; keep beats where every client tapped (first tap per client). */
 function collectRows(
-  state: RoomState,
+  core: RoomCore,
   sims: readonly SimClient[],
   beats: number,
 ): { rows: BeatRow[]; firstMeasuredBeat: number } {
+  const state = core.state;
   const schedule = state.schedule;
   if (!schedule) return { rows: [], firstMeasuredBeat: -1 };
   const truthOf = new Map(sims.map((c) => [c.cid, c.truth]));
-  const byBeat = new Map<number, Map<string, { delta: number; trueDelta: number }>>();
+  const biasOf = new Map(
+    sims.map((c) => {
+      const p = state.players[c.cid];
+      return [c.cid, p ? core.syncBiasOf(p) : null] as const;
+    }),
+  );
+  type Cell = { delta: number; trueDelta: number; audit: number | null };
+  const byBeat = new Map<number, Map<string, Cell>>();
   for (const r of state.tapLog) {
     let m = byBeat.get(r.beatIndex);
     if (!m) byBeat.set(r.beatIndex, (m = new Map()));
     if (!m.has(r.cid)) {
       const trueTime = truthOf.get(r.cid)?.get(r.cServerEst);
       if (trueTime === undefined) throw new Error(`no ground truth for tap ${r.cid}@${r.cServerEst}`);
-      m.set(r.cid, { delta: r.deltaMs, trueDelta: trueTime - beatTime(schedule, r.beatIndex) });
+      m.set(r.cid, { delta: r.deltaMs, trueDelta: trueTime - beatTime(schedule, r.beatIndex), audit: r.auditDeltaMs });
     }
   }
   const indices = [...byBeat.keys()].sort((a, b) => a - b);
   const rows: BeatRow[] = [];
   let first = -1;
   for (const b of indices) {
-    const m = byBeat.get(b) as Map<string, { delta: number; trueDelta: number }>;
+    const m = byBeat.get(b) as Map<string, Cell>;
     if (m.size < sims.length) {
       if (first === -1) continue; // still warming up
       continue; // a beat someone skipped (e.g. during a stall) is not measured
     }
     if (first === -1) first = b;
-    const cells = sims.map((c) => m.get(c.cid) as { delta: number; trueDelta: number });
+    const cells = sims.map((c) => m.get(c.cid) as Cell);
     const deltas = cells.map((x) => x.delta);
     const trueDeltas = cells.map((x) => x.trueDelta);
+    const auditDeltas = cells.map((x) => x.audit);
+    const audits = auditDeltas.filter((x): x is number => x !== null);
+    const correctedDeltas = sims.map((c, i) => {
+      const bias = biasOf.get(c.cid) ?? null;
+      return bias === null ? null : (deltas[i] as number) + bias;
+    });
+    const correcteds = correctedDeltas.filter((x): x is number => x !== null);
     rows.push({
       beatIndex: b,
       deltas,
       spread: Math.max(...deltas) - Math.min(...deltas),
       trueDeltas,
       trueSpread: Math.max(...trueDeltas) - Math.min(...trueDeltas),
+      auditDeltas,
+      auditSpread: audits.length === cells.length ? Math.max(...audits) - Math.min(...audits) : null,
+      correctedDeltas,
+      correctedSpread: correcteds.length === cells.length ? Math.max(...correcteds) - Math.min(...correcteds) : null,
     });
     if (rows.length >= beats) break;
   }
@@ -301,6 +400,9 @@ export function formatReport(r: SpreadReport): string {
   };
   hist("per-beat spread, server-measured (max − min of deltaMs from cServerEst) — the §5 criterion:", r.histogram, r.p50, r.p90, r.max, r.fractionUnder);
   hist("per-beat spread, ground truth (true tap instants; includes clock-sync error, which cancels out of the server view):", r.trueHistogram, r.trueP50, r.trueP90, r.trueMax, r.trueFractionUnder);
+  hist(`per-beat spread, server AUDIT column (receivedAt − rtt/2; amendment 4) — ${r.auditSpreads.length}/${r.rows.length} beats audited; per-tap audit error vs truth p50 ${r.auditErrorP50.toFixed(1)} p90 ${r.auditErrorP90.toFixed(1)} max ${r.auditErrorMax.toFixed(1)} ms (= one-way transit jitter):`, r.auditHistogram, r.auditP50, r.auditP90, r.auditMax, r.auditFractionUnder);
+  hist(`per-beat spread, BIAS-CORRECTED (deltaMs + server's per-client syncBias) — error vs truth p50 ${r.correctedErrorP50.toFixed(1)} p90 ${r.correctedErrorP90.toFixed(1)} max ${r.correctedErrorMax.toFixed(1)} ms:`, r.correctedHistogram, r.correctedP50, r.correctedP90, r.correctedMax, r.correctedFractionUnder);
+  lines.push("  server sync-bias estimate per client (should be −sync err above): " + r.clients.map((c) => `${c.cid} ${c.serverSyncBiasMs === null ? "–" : c.serverSyncBiasMs.toFixed(1)} ms (client −${c.syncErrorMs.toFixed(1)})`).join(", "));
   lines.push(`  ${r.pass ? "PASS" : "FAIL"}`);
   return lines.join("\n");
 }

@@ -69,6 +69,8 @@ describe("RoomCore", () => {
     clock.advance(37);
     const out = core.onMessage("A", JSON.stringify({ t: "ping", cid: "x", c0: 123 }));
     expect(out).toEqual([{ to: { kind: "conn", connId: "A" }, msg: { t: "pong", cid: "x", c0: 123, s1: 1037 } }]);
+    // a prev from an unknown cid is ignored, never throws
+    expect(core.onMessage("A", { t: "ping", cid: "x", c0: 124, prev: 1000 })).toHaveLength(1);
   });
 
   it("hello registers a player with a stable anonymous label and returns a snapshot", () => {
@@ -107,11 +109,11 @@ describe("RoomCore", () => {
     expect(scores).toHaveLength(2);
     expect(out[0]).toEqual({
       to: { kind: "conn", connId: "A" },
-      msg: { t: "tapScore", cid: "cid-1", beatIndex: 3, deltaMs: 40, hit: true },
+      msg: { t: "tapScore", cid: "cid-1", beatIndex: 3, deltaMs: 40, hit: true, auditDeltaMs: null },
     });
     expect(out[1]).toEqual({
       to: { kind: "others", connId: "A" },
-      msg: { t: "tapScore", cid: "p1", beatIndex: 3, deltaMs: 40, hit: true },
+      msg: { t: "tapScore", cid: "p1", beatIndex: 3, deltaMs: 40, hit: true, auditDeltaMs: null },
     });
     expect(core.state.tapLog).toEqual([
       expect.objectContaining({ cid: "cid-1", cServerEst: beatTime(schedule, 3) + 40, receivedAt: 6000, beatIndex: 3, hit: true }),
@@ -119,10 +121,65 @@ describe("RoomCore", () => {
     const stats = msgs(out, "stats")[0];
     expect(stats).toMatchObject({
       clients: [
-        { label: "p1", n: 1, hitRate: 1, medianAbsDelta: 40 },
+        { label: "p1", n: 1, hitRate: 1, medianAbsDelta: 40, medianAbsAuditDelta: null, rttMs: null },
         { label: "p2", n: 0, hitRate: 0, medianAbsDelta: 0 },
       ],
+      recentBeats: [{ beatIndex: 3, n: 1, spread: null, auditSpread: null, correctedSpread: null }],
     });
+  });
+
+  it("measures round trips from pings that reply to its pongs and audits taps with them (amendment 4)", () => {
+    const clock = new Clock();
+    const core = new RoomCore({ now: clock.now });
+    join(core, "A", "cid-1", "navigator");
+    const schedule = core.state.schedule as Schedule;
+    // first ping: no prev → no rtt sample
+    const pong1 = core.onMessage("A", { t: "ping", cid: "cid-1", c0: 0 })[0]?.msg;
+    expect(pong1?.t).toBe("pong");
+    const s1 = pong1?.t === "pong" ? pong1.s1 : 0;
+    // the client replies 90 ms later, naming the pong it answers
+    clock.advance(90);
+    core.onMessage("A", { t: "ping", cid: "cid-1", c0: 1, prev: s1 });
+    expect(core.state.players["cid-1"]?.rttSamples).toEqual([90]);
+    // and again at 110 ms → median rtt 100
+    const pong2 = core.onMessage("A", { t: "ping", cid: "cid-1", c0: 2 })[0]?.msg;
+    clock.advance(110);
+    core.onMessage("A", { t: "ping", cid: "cid-1", c0: 3, prev: pong2?.t === "pong" ? pong2.s1 : 0 });
+    expect(core.state.players["cid-1"]?.rttSamples).toEqual([90, 110]);
+
+    // a tap received at beat 4 + 70 ms, claiming to be exactly on the beat
+    clock.t = beatTime(schedule, 4) + 70;
+    const out = tapAt(core, "A", "cid-1", "navigator", beatTime(schedule, 4));
+    const score = msgs(out, "tapScore")[0];
+    // scored on cServerEst: delta 0; audited on receivedAt − rtt/2 = +70 − 50 = +20
+    expect(score).toMatchObject({ deltaMs: 0, hit: true, auditDeltaMs: 20 });
+    expect(core.state.tapLog[0]).toMatchObject({ auditServerTime: beatTime(schedule, 4) + 20, auditDeltaMs: 20 });
+    const stats = msgs(out, "stats")[0];
+    expect(stats).toMatchObject({
+      clients: [{ rttMs: 100, medianAbsAuditDelta: 20, syncBiasMs: 20 }],
+      // one tapper: every spread is max − min of a single value
+      recentBeats: [{ beatIndex: 4, n: 1, spread: 0, auditSpread: 0, correctedSpread: 0 }],
+    });
+
+    // a reconnect starts the rtt samples over: the old socket's path is gone
+    core.onClose("A");
+    join(core, "B", "cid-1", "navigator");
+    expect(core.state.players["cid-1"]?.rttSamples).toEqual([]);
+  });
+
+  it("recentBeats reports spread only for beats every connected player tapped", () => {
+    const clock = new Clock();
+    const core = new RoomCore({ now: clock.now });
+    join(core, "A", "cid-1", "navigator");
+    join(core, "B", "cid-2", "theorist");
+    const schedule = core.state.schedule as Schedule;
+    tapAt(core, "A", "cid-1", "navigator", beatTime(schedule, 2) + 10);
+    tapAt(core, "B", "cid-2", "theorist", beatTime(schedule, 2) - 30);
+    tapAt(core, "A", "cid-1", "navigator", beatTime(schedule, 3) + 5);
+    expect(core.recentBeats()).toEqual([
+      { beatIndex: 2, n: 2, spread: 40, auditSpread: null, correctedSpread: null },
+      { beatIndex: 3, n: 1, spread: null, auditSpread: null, correctedSpread: null },
+    ]);
   });
 
   it("ignores taps from clients that never said hello and taps outside the schedule", () => {

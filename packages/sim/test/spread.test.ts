@@ -25,6 +25,28 @@ describe("sim spread", () => {
     expect(report.trueFractionUnder).toBeGreaterThanOrEqual(0.9);
   });
 
+  it("audit column (amendment 4) is populated once connections have an rtt; its per-tap error is one-way transit jitter", () => {
+    expect(report.auditSpreads.length).toBeGreaterThanOrEqual(55);
+    // the raw audit's error against the true tap instant is a single one-way jitter draw
+    // (sd up to 80 ms for the slow client), so it is honest but noisy: informational
+    expect(report.auditErrorP50).toBeLessThan(50);
+    expect(report.auditErrorP90).toBeLessThan(150);
+    console.log(`raw audit spread < 150 ms on ${(report.auditFractionUnder * 100).toFixed(1)}% of beats (informational; includes transit jitter)`);
+  });
+
+  it("the server's per-client sync-bias estimate is the negative of each client's real sync error", () => {
+    // deltaMs = trueDelta + syncErr, so the correction that recovers trueDelta is bias = −syncErr
+    for (const c of report.clients) {
+      expect(c.serverSyncBiasMs).not.toBeNull();
+      expect(Math.abs((c.serverSyncBiasMs as number) + c.syncErrorMs)).toBeLessThan(25);
+    }
+  });
+
+  it("bias-corrected spread tracks ground truth and stays under 150 ms on ≥ 90% of beats", () => {
+    expect(report.correctedErrorP90).toBeLessThan(60);
+    expect(report.correctedFractionUnder).toBeGreaterThanOrEqual(0.9);
+  });
+
   it("every client synced to within the window, well under the beat interval", () => {
     for (const c of report.clients) {
       expect(Number.isFinite(c.syncErrorMs)).toBe(true);

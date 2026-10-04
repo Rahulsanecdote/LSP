@@ -12,6 +12,7 @@ import {
   scoreTap,
   startAct,
   type ActStart,
+  type BeatSpread,
   type ClientMessage,
   type ClientStats,
   type Hello,
@@ -49,12 +50,18 @@ export interface RoomCoreOptions {
   tapLogCap?: number;
   /** |delta| samples per player kept for the live median (default 50) */
   recentDeltaCap?: number;
+  /** server-measured rtt samples kept per connection (default 24) */
+  rttCap?: number;
+  /** beats carried in `stats.recentBeats` (default 20) */
+  recentBeatsCap?: number;
 }
 
 export class RoomCore {
   private readonly now: () => number;
   private readonly tapLogCap: number;
   private readonly recentDeltaCap: number;
+  private readonly rttCap: number;
+  private readonly recentBeatsCap: number;
   private _state: RoomState;
   private _dirty = false;
   private _lastError: string | null = null;
@@ -63,6 +70,8 @@ export class RoomCore {
     this.now = opts.now;
     this.tapLogCap = opts.tapLogCap ?? 500;
     this.recentDeltaCap = opts.recentDeltaCap ?? 50;
+    this.rttCap = opts.rttCap ?? 24;
+    this.recentBeatsCap = opts.recentBeatsCap ?? 20;
     this._state = state;
   }
 
@@ -201,13 +210,18 @@ export class RoomCore {
         taps: 0,
         hits: 0,
         recentAbsDeltas: [],
+        recentAbsAuditDeltas: [],
+        recentTransit: [],
+        rttSamples: [],
       };
       this._state.players[hello.cid] = player;
     } else {
-      // reconnect: same cid keeps its label, stats and any act participation
+      // reconnect: same cid keeps its label, stats and any act participation; the round-trip
+      // samples belong to the old socket and start over
       player.connected = true;
       player.connId = connId;
       player.role = hello.role;
+      player.rttSamples = [];
     }
     this.touch();
     const out: Outbound[] = [];
@@ -219,7 +233,36 @@ export class RoomCore {
 
   private onPing(connId: string, ping: Ping): Outbound[] {
     // Answer immediately. s1 is both receive and send time: same tick.
-    return [{ to: { kind: "conn", connId }, msg: { t: "pong", cid: ping.cid, c0: ping.c0, s1: this.now() } }];
+    const now = this.now();
+    // Amendment 4: a ping sent in immediate reply to our pong at `prev` closes a round trip the
+    // server measured itself, free of any client clock.
+    const player = this._state.players[ping.cid];
+    if (player && player.connId === connId && ping.prev !== undefined) {
+      const rtt = now - ping.prev;
+      if (rtt >= 0 && rtt < 60_000) {
+        player.rttSamples.push(rtt);
+        if (player.rttSamples.length > this.rttCap) player.rttSamples.shift();
+        this.touch();
+      }
+    }
+    return [{ to: { kind: "conn", connId }, msg: { t: "pong", cid: ping.cid, c0: ping.c0, s1: now } }];
+  }
+
+  /**
+   * Server's estimate of a player's clock-sync error, sign such that `deltaMs + bias` is the
+   * sync-corrected delta: median(receivedAt − cServerEst) over recent taps minus half the CURRENT
+   * median rtt. Using the current rtt for every tap keeps early, few-sample rtt readings from
+   * being frozen into the estimate. Null until there is an rtt and a tap.
+   */
+  syncBiasOf(player: PlayerRecord): number | null {
+    const rtt = this.rttOf(player);
+    if (rtt === null || player.recentTransit.length === 0) return null;
+    return median(player.recentTransit) - rtt / 2;
+  }
+
+  /** Server-measured median round trip for a player's current connection, or null. */
+  private rttOf(player: PlayerRecord): number | null {
+    return player.rttSamples.length ? median(player.rttSamples) : null;
   }
 
   private onTap(connId: string, tap: Tap): Outbound[] {
@@ -231,6 +274,11 @@ export class RoomCore {
     // server receive time alongside it for audit.
     const score = scoreTap(schedule, tap.cServerEst);
     if (!score) return [];
+    // Amendment 4: independent audit estimate of when the tap happened, from our own clock and
+    // our own rtt measurements. Compared against the SAME beat the tap was scored to.
+    const rtt = this.rttOf(player);
+    const auditServerTime = rtt === null ? null : receivedAt - rtt / 2;
+    const auditDeltaMs = auditServerTime === null ? null : auditServerTime - beatTime(schedule, score.beatIndex);
 
     const record: TapRecord = {
       cid: tap.cid,
@@ -241,6 +289,8 @@ export class RoomCore {
       beatIndex: score.beatIndex,
       deltaMs: score.deltaMs,
       hit: score.hit,
+      auditServerTime,
+      auditDeltaMs,
     };
     this._state.tapLog.push(record);
     if (this._state.tapLog.length > this.tapLogCap) {
@@ -250,15 +300,21 @@ export class RoomCore {
     if (score.hit) player.hits++;
     player.recentAbsDeltas.push(Math.abs(score.deltaMs));
     if (player.recentAbsDeltas.length > this.recentDeltaCap) player.recentAbsDeltas.shift();
+    if (auditDeltaMs !== null) {
+      player.recentAbsAuditDeltas.push(Math.abs(auditDeltaMs));
+      if (player.recentAbsAuditDeltas.length > this.recentDeltaCap) player.recentAbsAuditDeltas.shift();
+    }
+    player.recentTransit.push(receivedAt - tap.cServerEst);
+    if (player.recentTransit.length > this.recentDeltaCap) player.recentTransit.shift();
 
     const out: Outbound[] = [];
     out.push({
       to: { kind: "conn", connId },
-      msg: { t: "tapScore", cid: tap.cid, beatIndex: score.beatIndex, deltaMs: score.deltaMs, hit: score.hit },
+      msg: { t: "tapScore", cid: tap.cid, beatIndex: score.beatIndex, deltaMs: score.deltaMs, hit: score.hit, auditDeltaMs },
     });
     out.push({
       to: { kind: "others", connId },
-      msg: { t: "tapScore", cid: player.label, beatIndex: score.beatIndex, deltaMs: score.deltaMs, hit: score.hit },
+      msg: { t: "tapScore", cid: player.label, beatIndex: score.beatIndex, deltaMs: score.deltaMs, hit: score.hit, auditDeltaMs },
     });
 
     const act = this._state.activeAct;
@@ -334,7 +390,44 @@ export class RoomCore {
         n: p.taps,
         hitRate: p.taps === 0 ? 0 : p.hits / p.taps,
         medianAbsDelta: p.recentAbsDeltas.length === 0 ? 0 : median(p.recentAbsDeltas),
+        medianAbsAuditDelta: p.recentAbsAuditDeltas.length === 0 ? null : median(p.recentAbsAuditDeltas),
+        rttMs: this.rttOf(p),
+        syncBiasMs: this.syncBiasOf(p),
       }));
-    return { to: { kind: "room" }, msg: { t: "stats", clients } };
+    return { to: { kind: "room" }, msg: { t: "stats", clients, recentBeats: this.recentBeats() } };
+  }
+
+  /**
+   * Cross-client spread for the most recent beats, from both columns. A beat's spread is only
+   * defined when every currently connected player tapped it (first tap per player counts).
+   */
+  recentBeats(): BeatSpread[] {
+    const connected = Object.values(this._state.players).filter((p) => p.connected).length;
+    const byBeat = new Map<number, Map<string, TapRecord>>();
+    for (const r of this._state.tapLog) {
+      let m = byBeat.get(r.beatIndex);
+      if (!m) byBeat.set(r.beatIndex, (m = new Map()));
+      if (!m.has(r.cid)) m.set(r.cid, r);
+    }
+    const indices = [...byBeat.keys()].sort((a, b) => a - b).slice(-this.recentBeatsCap);
+    return indices.map((beatIndex) => {
+      const taps = [...(byBeat.get(beatIndex) as Map<string, TapRecord>).values()];
+      const full = connected > 0 && taps.length >= connected;
+      const deltas = taps.map((r) => r.deltaMs);
+      const audits = taps.flatMap((r) => (r.auditDeltaMs === null ? [] : [r.auditDeltaMs]));
+      const corrected = taps.flatMap((r) => {
+        const p = this._state.players[r.cid];
+        const bias = p ? this.syncBiasOf(p) : null;
+        return bias === null ? [] : [r.deltaMs + bias];
+      });
+      const range = (xs: number[]): number => Math.max(...xs) - Math.min(...xs);
+      return {
+        beatIndex,
+        n: taps.length,
+        spread: full ? range(deltas) : null,
+        auditSpread: full && audits.length === taps.length ? range(audits) : null,
+        correctedSpread: full && corrected.length === taps.length ? range(corrected) : null,
+      };
+    });
   }
 }

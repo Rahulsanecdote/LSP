@@ -1,4 +1,4 @@
-import { SyncEstimator } from "@lsp/protocol";
+import { SyncEstimator, type SyncEstimatorOptions } from "@lsp/protocol";
 import { drawLatency, type LinkModel } from "./net.js";
 import { Rng } from "./rng.js";
 
@@ -7,9 +7,15 @@ import { Rng } from "./rng.js";
  * sequential ping/pong exchanges over a link with independent up/down latency draws and
  * returns |estimated − true offset| after each round trip (NaN while not ready).
  */
-export function syncTrial(seed: number, link: LinkModel, roundTrips: number, trueOffset = 123_456.789): number[] {
+export function syncTrial(
+  seed: number,
+  link: LinkModel,
+  roundTrips: number,
+  trueOffset = 123_456.789,
+  estimator: SyncEstimatorOptions = {},
+): number[] {
   const rng = new Rng(seed);
-  const est = new SyncEstimator();
+  const est = new SyncEstimator(estimator);
   const errors: number[] = [];
   let local = 0;
   for (let i = 0; i < roundTrips; i++) {

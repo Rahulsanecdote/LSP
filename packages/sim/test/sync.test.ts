@@ -6,18 +6,22 @@ import { formatSyncDistribution, summarise, syncTrial } from "../src/index.js";
  * latency, (a) median |error| ≤ 10 ms after 4 round trips, (b) median ≤ 5 ms after 12,
  * (c) p95 ≤ 20 ms after 12. Prints the distributions.
  */
-describe("clock sync convergence (80 ± 30 ms one-way, 1,000 seeds)", () => {
-  const link = { meanMs: 80, sdMs: 30 };
+function run(link: { meanMs: number; sdMs: number }, keepFraction: number): { d4: ReturnType<typeof summarise>; d12: ReturnType<typeof summarise>; after4: number[] } {
   const SEEDS = 1000;
   const after4: number[] = [];
   const after12: number[] = [];
   for (let seed = 0; seed < SEEDS; seed++) {
-    const errs = syncTrial(seed, link, 12);
+    const errs = syncTrial(seed, link, 12, undefined, { keepFraction });
     after4.push(errs[3] as number);
     after12.push(errs[11] as number);
   }
-  const d4 = summarise(after4, 4);
-  const d12 = summarise(after12, 12);
+  return { d4: summarise(after4, 4), d12: summarise(after12, 12), after4 };
+}
+
+describe("clock sync convergence (80 ± 30 ms one-way, 1,000 seeds)", () => {
+  const link = { meanMs: 80, sdMs: 30 };
+  const { d4, d12, after4 } = run(link, 1);
+  console.log("80 ± 30 ms, median over the whole window (shipping estimator)");
   console.log(formatSyncDistribution(d4));
   console.log(formatSyncDistribution(d12));
 
@@ -40,5 +44,30 @@ describe("clock sync convergence (80 ± 30 ms one-way, 1,000 seeds)", () => {
   it("is exact when latency is symmetric and constant", () => {
     const errs = syncTrial(3, { meanMs: 80, sdMs: 0 }, 4);
     expect(errs[3]).toBeCloseTo(0, 6);
+  });
+});
+
+describe("clock sync convergence (250 ± 80 ms one-way, 1,000 seeds) — informational, amendment 5", () => {
+  const link = { meanMs: 250, sdMs: 80 };
+  const { d4, d12 } = run(link, 1);
+  console.log("250 ± 80 ms, median over the whole window (shipping estimator)");
+  console.log(formatSyncDistribution(d4));
+  console.log(formatSyncDistribution(d12));
+
+  it("still reports after 4 round trips and keeps the error well inside the hit window", () => {
+    expect(d4.median).toBeLessThan(40);
+    expect(d12.p95).toBeLessThan(75);
+  });
+});
+
+describe("amendment 5 comparison: lowest-rtt-half median (not adopted)", () => {
+  it("does not beat the plain median under independent per-direction jitter", () => {
+    for (const link of [{ meanMs: 80, sdMs: 30 }, { meanMs: 250, sdMs: 80 }]) {
+      const plain = run(link, 1);
+      const filtered = run(link, 0.5);
+      console.log(`${link.meanMs} ± ${link.sdMs} ms  plain median: 4 RTT ${plain.d4.median.toFixed(1)} / 12 RTT ${plain.d12.median.toFixed(1)} ms   lowest-rtt half: 4 RTT ${filtered.d4.median.toFixed(1)} / 12 RTT ${filtered.d12.median.toFixed(1)} ms`);
+      expect(filtered.d4.median).toBeGreaterThanOrEqual(plain.d4.median);
+      expect(filtered.d12.median).toBeGreaterThanOrEqual(plain.d12.median);
+    }
   });
 });

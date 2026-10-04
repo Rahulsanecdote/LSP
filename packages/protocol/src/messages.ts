@@ -22,6 +22,12 @@ export const PingSchema = z.object({
   cid: id,
   /** client send time (client local clock) */
   c0: ms,
+  /**
+   * Amendment 4: the `s1` of the pong this ping was sent in immediate reply to, when it was.
+   * Lets the server measure the round trip itself (`now − prev`) without trusting any client
+   * clock; those samples feed the per-tap audit estimate.
+   */
+  prev: ms.optional(),
 });
 export type Ping = z.infer<typeof PingSchema>;
 
@@ -72,6 +78,11 @@ export const TapScoreSchema = z.object({
   beatIndex: z.number().int(),
   deltaMs: ms,
   hit: z.boolean(),
+  /**
+   * Amendment 4: delta of the server's independent audit estimate of the tap instant
+   * (`receivedAt − medianRtt/2`) from the same beat. Null until the connection has an rtt sample.
+   */
+  auditDeltaMs: ms.nullable(),
 });
 export type TapScore = z.infer<typeof TapScoreSchema>;
 
@@ -147,12 +158,38 @@ export const ClientStatsSchema = z.object({
   hitRate: z.number().min(0).max(1),
   /** median |deltaMs| over recent taps, 0 when n = 0 */
   medianAbsDelta: ms,
+  /** median |auditDeltaMs| over recent taps that had one, null when none */
+  medianAbsAuditDelta: ms.nullable(),
+  /** server-measured median round trip for this connection, null until measured */
+  rttMs: ms.nullable(),
+  /**
+   * Median of (auditDeltaMs − deltaMs) over recent taps: the server's estimate of how far this
+   * client's clock sync is off. Averages out per-tap transit jitter, so it detects a sync
+   * failure without the per-tap noise of the raw audit column.
+   */
+  syncBiasMs: ms.nullable(),
 });
 export type ClientStats = z.infer<typeof ClientStatsSchema>;
+
+/** One recent beat's cross-client spread, both ways of measuring it (amendment 4). */
+export const BeatSpreadSchema = z.object({
+  beatIndex: z.number().int(),
+  /** clients that tapped this beat */
+  n: z.number().int().nonnegative(),
+  /** max − min of deltaMs across tappers; null unless every connected player tapped */
+  spread: ms.nullable(),
+  /** max − min of auditDeltaMs across tappers; null unless every connected player has one */
+  auditSpread: ms.nullable(),
+  /** max − min of (deltaMs + that player's syncBiasMs): the sync-aware spread without per-tap jitter */
+  correctedSpread: ms.nullable(),
+});
+export type BeatSpread = z.infer<typeof BeatSpreadSchema>;
 
 export const StatsSchema = z.object({
   t: z.literal("stats"),
   clients: z.array(ClientStatsSchema),
+  /** the most recent beats, oldest first */
+  recentBeats: z.array(BeatSpreadSchema),
 });
 export type Stats = z.infer<typeof StatsSchema>;
 

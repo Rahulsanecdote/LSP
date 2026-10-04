@@ -20,6 +20,15 @@ export interface PlayerRecord {
   hits: number;
   /** |deltaMs| of the most recent taps, newest last, for the live median */
   recentAbsDeltas: number[];
+  /** |auditDeltaMs| of the most recent audited taps, newest last */
+  recentAbsAuditDeltas: number[];
+  /**
+   * (receivedAt − cServerEst) of the most recent taps, newest last. Equals one-way transit
+   * minus the client's sync error; with the current median rtt this yields the sync-bias estimate.
+   */
+  recentTransit: number[];
+  /** server-measured round trips for this player's current connection, newest last */
+  rttSamples: number[];
 }
 
 export interface TapRecord {
@@ -33,6 +42,13 @@ export interface TapRecord {
   beatIndex: number;
   deltaMs: number;
   hit: boolean;
+  /**
+   * Amendment 4: independent audit estimate of the tap instant, `receivedAt − medianRtt/2`
+   * using round trips the server measured itself. Null until the connection has an rtt sample.
+   * Scoring never uses it; the real-device criterion is read from it.
+   */
+  auditServerTime: number | null;
+  auditDeltaMs: number | null;
 }
 
 export interface RoomState {

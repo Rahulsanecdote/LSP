@@ -1,6 +1,6 @@
 import {
+  SYNC_BURST,
   SYNC_INTERVAL_MS,
-  SYNC_MIN_SAMPLES,
   SyncEstimator,
   beatTime,
   nearestBeatIndex,
@@ -26,7 +26,7 @@ export interface SimClientOptions {
 }
 
 /**
- * A simulated phone. Behaves like the diagnostic page will: hello, a 4-round-trip sync burst
+ * A simulated phone. Behaves like the diagnostic page will: hello, an 8-round-trip sync burst
  * on connect and every 10 s, renders beats locally from the Schedule, taps each beat with
  * normal human error, and sends `tap { cLocal, cServerEst }`.
  *
@@ -141,7 +141,7 @@ export class SimClient implements Endpoint {
         this.estimator.pushExchange(msg.c0, msg.s1, this.localNow());
         this.burstRemaining--;
         if (this.burstRemaining > 0) {
-          this.sendPing();
+          this.sendPing(msg.s1);
         } else {
           this.syncTimer = this.sim.schedule(this.sim.now + SYNC_INTERVAL_MS, () => this.startSyncBurst());
         }
@@ -167,12 +167,14 @@ export class SimClient implements Endpoint {
     if (this.connId === null) return;
     this.sim.cancel(this.syncTimer);
     this.syncTimer = null;
-    this.burstRemaining = SYNC_MIN_SAMPLES;
+    this.burstRemaining = SYNC_BURST;
     this.sendPing();
   }
 
-  private sendPing(): void {
-    this.send({ t: "ping", cid: this.cid, c0: this.localNow() });
+  private sendPing(prev?: number): void {
+    // `prev` closes a server-measured round trip (amendment 4) when this ping is an immediate
+    // reply to a pong
+    this.send(prev === undefined ? { t: "ping", cid: this.cid, c0: this.localNow() } : { t: "ping", cid: this.cid, c0: this.localNow(), prev });
   }
 
   private maybeStartTapping(): void {

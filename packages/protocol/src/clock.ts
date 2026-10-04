@@ -1,4 +1,4 @@
-import { SYNC_MIN_SAMPLES, SYNC_RTT_REJECT_FACTOR } from "./constants.js";
+import { SYNC_MIN_SAMPLES, SYNC_RTT_REJECT_FACTOR, SYNC_WINDOW } from "./constants.js";
 
 /**
  * NTP-style clock sync (SLICE_HANDOFF.md §5 "Sync").
@@ -9,10 +9,20 @@ import { SYNC_MIN_SAMPLES, SYNC_RTT_REJECT_FACTOR } from "./constants.js";
  *     rtt    = c1 − c0
  *     offset = s1 − (c0 + rtt / 2)        // room time ≈ local time + offset
  *
- * The estimator keeps a sliding window of accepted samples, rejects samples whose rtt is
- * more than SYNC_RTT_REJECT_FACTOR × the running median rtt, and reports the median offset
- * once it holds at least SYNC_MIN_SAMPLES. It never reads a clock itself; the caller passes
- * every timestamp in, so the same code runs in the browser, under Vitest and in the sim.
+ * The estimator keeps a sliding window of accepted samples (SYNC_WINDOW), rejects samples
+ * whose rtt is more than SYNC_RTT_REJECT_FACTOR × the running median rtt, and reports an
+ * offset once it holds at least SYNC_MIN_SAMPLES.
+ *
+ * Offset estimate: the median offset over the window. Amendment 5 (v0.2.1) evaluated taking the
+ * median over only the lowest-rtt half of the window (`keepFraction: 0.5`), the NTP-style
+ * filter. Under independent per-direction jitter the round trip carries no information about
+ * the asymmetry that causes offset error, so the filter only halves the sample count and
+ * converges SLOWER; under a heavy-tailed model it trims the early p95 and nothing else, since
+ * the 2× median rtt rejection already drops the spikes. It is therefore not the default. The
+ * option is kept so the trial can be re-run; the numbers are in SLICE_HANDOFF.md.
+ *
+ * It never reads a clock itself; the caller passes every timestamp in, so the same code runs
+ * in the browser, under Vitest and in the sim.
  */
 
 export interface SyncSample {
@@ -40,8 +50,10 @@ export function median(xs: readonly number[]): number {
 export interface SyncEstimatorOptions {
   /** samples required before an estimate is reported (default SYNC_MIN_SAMPLES) */
   minSamples?: number;
-  /** sliding window length over accepted samples (default 32) */
+  /** sliding window length over accepted samples (default SYNC_WINDOW) */
   maxSamples?: number;
+  /** fraction of the window (lowest rtt first) the offset median is taken over (default 1: all) */
+  keepFraction?: number;
   /** rtt rejection multiple over the running median (default SYNC_RTT_REJECT_FACTOR) */
   rttRejectFactor?: number;
 }
@@ -56,14 +68,16 @@ export class SyncEstimator {
   private readonly minSamples: number;
   private readonly maxSamples: number;
   private readonly rttRejectFactor: number;
+  private readonly keepFraction: number;
   private readonly accepted: SyncSample[] = [];
   private rejectedCount = 0;
 
   constructor(opts: SyncEstimatorOptions = {}) {
     this.minSamples = opts.minSamples ?? SYNC_MIN_SAMPLES;
-    this.maxSamples = opts.maxSamples ?? 32;
+    this.maxSamples = opts.maxSamples ?? SYNC_WINDOW;
     this.rttRejectFactor = opts.rttRejectFactor ?? SYNC_RTT_REJECT_FACTOR;
-    if (this.minSamples < 1 || this.maxSamples < this.minSamples) {
+    this.keepFraction = opts.keepFraction ?? 1;
+    if (this.minSamples < 1 || this.maxSamples < this.minSamples || this.keepFraction <= 0 || this.keepFraction > 1) {
       throw new Error("invalid SyncEstimator options");
     }
   }
@@ -102,11 +116,17 @@ export class SyncEstimator {
     return this.rejectedCount;
   }
 
-  /** Current estimate, or undefined until `minSamples` have been accepted. */
+  /**
+   * Current estimate, or undefined until `minSamples` have been accepted. `offset` is the
+   * median over the lowest-rtt `keepFraction` of the window (all of it by default); `rtt` is
+   * the median over all of it.
+   */
   estimate(): SyncEstimate | undefined {
     if (!this.ready) return undefined;
+    const byRtt = [...this.accepted].sort((a, b) => a.rtt - b.rtt);
+    const keep = byRtt.slice(0, Math.max(1, Math.ceil(byRtt.length * this.keepFraction)));
     return {
-      offset: median(this.accepted.map((s) => s.offset)),
+      offset: median(keep.map((s) => s.offset)),
       rtt: median(this.accepted.map((s) => s.rtt)),
       samples: this.accepted.length,
     };

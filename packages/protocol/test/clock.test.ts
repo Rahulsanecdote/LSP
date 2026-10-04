@@ -70,6 +70,18 @@ describe("SyncEstimator", () => {
     expect(e.estimate()).toEqual({ offset: 200, rtt: 50, samples: 4 });
   });
 
+  it("keepFraction restricts the offset median to the lowest-rtt samples (option, not default)", () => {
+    const e = new SyncEstimator({ keepFraction: 0.5 });
+    e.push({ offset: 0, rtt: 50 });
+    e.push({ offset: 2, rtt: 60 });
+    e.push({ offset: 500, rtt: 90 });
+    e.push({ offset: 600, rtt: 95 });
+    expect(e.estimate()?.offset).toBe(1); // median of the two lowest-rtt offsets
+    const plain = new SyncEstimator();
+    for (const s of [{ offset: 0, rtt: 50 }, { offset: 2, rtt: 60 }, { offset: 500, rtt: 90 }, { offset: 600, rtt: 95 }]) plain.push(s);
+    expect(plain.estimate()?.offset).toBe(251);
+  });
+
   it("converts between local and room time", () => {
     const e = new SyncEstimator();
     for (let i = 0; i < 4; i++) e.pushExchange(1000 + i, 2040 + i, 1080 + i);
