@@ -1,5 +1,40 @@
 # SLICE HANDOFF — Last Stand Protocol: Vertical Slice
-Version 0.2.0 · 2026-10-03 · Handoff from Rimuru (design/architecture) to Claude Code
+Version 0.2.1 · 2026-10-04 · Handoff from Rimuru (design/architecture) to Claude Code
+
+## Amendments (v0.2.1)
+
+Agreed between Rimuru and Claude Code during Task 1 planning, 2026-10-04. Amendments change the text of §5; clarifications fix a reading of it. Anything that comes up during the build is a deviation and belongs in the Task 1 report, not here.
+
+### Amendments
+
+1. **Sim is pure.** `packages/sim` is a virtual-time, deterministic simulator: no network, no `Date.now()`, seeded PRNG only. §5's "connect to a local party server" was a spec error; CLAUDE.md's purity rule wins. There is no live mode in Task 1. The real network is covered by the real-device test. A live driver, if ever wanted, lives in `apps/party/scripts/`, never in `packages/sim`.
+2. **Clock-sync criterion is statistical.** The criterion as written ("within ±10 ms … within 4 round trips") was probabilistic under the stated noise: with per-direction sd 30 ms the median of 4 offset samples has an error sd near 13 ms, so a single-seed test fails by chance about half the time. The criterion now reads: over 1,000 seeded runs under 80 ± 30 ms one-way latency, (a) median absolute offset error ≤ 10 ms after 4 round trips, (b) median absolute error ≤ 5 ms after 12 round trips, (c) 95th-percentile absolute error ≤ 20 ms after 12 round trips. The test prints the error distribution. No literal changed.
+3. **Three messages added to the protocol.** `hello` (client → server: `cid`, `role`), `snapshot` (server → client on connect/reconnect: current schedule, players, active act), and `stats` (server → room: per-client hit rate, median |delta|, sample count, keyed by an anonymous label). All zod-validated in `packages/protocol`.
+
+4. **Audit column for the real-device criterion.** Because a client renders the beat and stamps its tap from the same offset estimate, its sync error cancels out of `deltaMs` exactly, so the §5 server-measured spread cannot detect a sync failure. The server now also records, per tap, `auditServerTime = receivedAt − medianRtt/2` and `auditDeltaMs` against the same beat, where the round trips are measured by the server itself: a `ping` sent in immediate reply to a `pong` carries that pong's `s1` as `prev`, and `rtt = now − prev`. Scoring stays on `cServerEst`. The audit is surfaced in `tapScore.auditDeltaMs`, in `stats.clients[].rttMs / medianAbsAuditDelta / syncBiasMs`, and in `stats.recentBeats[]` as `auditSpread`. Because a single tap's audit carries that tap's own one-way transit jitter, the server also estimates each client's sync error as `syncBiasMs = median(receivedAt − cServerEst) − medianRtt/2` over recent taps, and reports `correctedSpread` = spread of `deltaMs + syncBiasMs`. In sim the corrected column tracks ground truth with p50 4.5 ms, p90 12.5 ms error; the raw audit column's per-tap error is the link's one-way jitter (p90 ≈ 105 ms on the 250 ± 80 ms link). **The real-device criterion in §5 is read from the audit columns: `auditSpread` is the pessimistic bound, `correctedSpread` the best estimate; both are recorded.** Caveat: `syncBiasMs` is averaged over a player's taps, so it cannot distinguish a client's clock-sync bias from that player's systematic human bias (someone who always taps 60 ms early looks like a clock that is 60 ms off, and the correction absorbs it). The corrected column is therefore a sync-validation instrument only; it is never used for scoring. The sync burst is 8 round trips (≥ 4 as required) so each burst yields seven rtt samples.
+5. **Estimator window and the low-rtt filter.** The sync window is 24 samples (was 32). The proposed NTP-style filter (median over the lowest-rtt half of the window) was implemented as an option (`keepFraction`) and evaluated over 1,000 seeds; it is **not** the default. Under independent per-direction jitter the round trip is statistically independent of the up/down asymmetry that causes offset error, so the filter only halves the sample count and converges slower; under a heavy-tailed model (20% of legs carrying an exponential spike) it trims the early p95 and nothing else, because the 2× median rtt rejection already drops those spikes. The shipping estimator is the median over the whole window. Thresholds from amendment 2 are unchanged and pass. Numbers (median / p95 of |offset error|, ms):
+
+   | link, one-way | estimator | 4 RTT | 12 RTT |
+   |---|---|---|---|
+   | 80 ± 30 | median of all (shipping) | 7.6 / 22.9 | 4.5 / 14.5 |
+   | 80 ± 30 | lowest-rtt half | 10.3 / 28.1 | 5.9 / 19.4 |
+   | 250 ± 80 | median of all (shipping) | 20.3 / 61.0 | 11.9 / 38.6 |
+   | 250 ± 80 | lowest-rtt half | 27.3 / 75.6 | 15.7 / 51.8 |
+   | 80 ± 30, +20% spikes ~Exp(150) | median of all | 11.4 / 46.2 | 6.4 / 19.4 |
+   | 80 ± 30, +20% spikes ~Exp(150) | lowest-rtt half | 11.1 / 33.1 | 6.7 / 21.2 |
+   | 250 ± 80, +20% spikes ~Exp(300) | median of all | 28.6 / 105.4 | 16.9 / 48.3 |
+   | 250 ± 80, +20% spikes ~Exp(300) | lowest-rtt half | 29.0 / 84.6 | 17.3 / 54.8 |
+
+### Clarifications
+
+3. **Consent act.** The run is shared: one miss by any listed role resets every role's run. A listed role that does not tap on a beat has missed that beat. An act is capped at 12 beats; on the cap the server emits `actResult { ok: false }` with `perRole` filled so the crew can see who broke the run. Late joiner: taps from roles not in `roles` are ignored, and taps from a connection that joined after `actStart` are ignored. A listed role that disconnects and reconnects during the act stays listed and keeps its position in the run; reconnect never resets anyone.
+4. **Tie at exactly ±260 ms.** `beatIndex = floor((serverTime − epoch) / interval + 0.5)`. A tap exactly halfway between two beats belongs to the later beat, on both sides. Documented in the scorer and tested at ±259, ±260, ±261 ms.
+6. **Server clock.** Room time is server wall-clock ms minus a room-start anchor persisted in room storage. `performance.now()` cannot be the room clock on Workers: it is frozen during synchronous execution and resets on hibernation. All scoring is relative to the one anchor, so absolute drift does not matter. Explained in the README.
+7. **Evaluation grace.** A beat closes for act evaluation 600 ms after its nominal time (hit window unchanged at ±150 ms). A tap arriving after its beat has closed is scored as a miss for that beat and is never reassigned to the next one.
+
+Accepted as-is: scoring trusts `cServerEst` for the slice; the server records its own receive time alongside it for audit (one-line note in the Task 1 report). Playwright in Task 1 is one smoke test of the diagnostic page: loads, connects to a dev party server, shows a numeric offset within 5 s.
+
+---
 
 Self-contained. Execute without conversation history. Companion design docs: `docs/design/ep1-descent.md` (read §1 and §4 before Task 2) and `docs/design/ep5-dead-vowel.md` (read §1–§2 and §5 before Tasks 4–5). Neither is needed for Task 1.
 
@@ -340,4 +375,5 @@ Append a `## Task N report` section to this file as each task completes. Task 1:
 ## 10. Version
 
 - **v0.1.0 — 2026-10-03.** Initial slice handoff. Scope: beat engine (Task 1), with Tasks 2–3 outlined.
+- **v0.2.1 — 2026-10-04.** Amendments from Task 1 planning: pure virtual-time sim, statistical clock-sync criterion, three added protocol messages; clarifications on act semantics, tie-break, server clock, evaluation grace. Added after the sim checkpoint: amendment 4 (server audit column and bias-corrected spread; real-device criterion read from it) and amendment 5 (estimator window 24; low-rtt filter evaluated and rejected with numbers).
 - **v0.2.0 — 2026-10-03.** Added Task 4 (Discriminator over fft.js) and Task 5 (counterfeit state machine + siege scheduler) as headless systems with bench pages; file map, scope, not-touch list and report format updated.

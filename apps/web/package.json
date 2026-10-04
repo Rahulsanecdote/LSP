@@ -1,0 +1,27 @@
+{
+  "name": "@lsp/web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Next.js shell for Last Stand Protocol. Task 1: the beat diagnostic page only.",
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "scripts": {
+    "dev": "next dev --port 3000",
+    "build": "next build",
+    "start": "next start --port 3000",
+    "typecheck": "tsc --noEmit",
+    "e2e": "playwright test"
+  },
+  "dependencies": {
+    "@lsp/protocol": "workspace:*",
+    "next": "^16.3.8",
+    "partysocket": "^1.3.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0"
+  }
+}

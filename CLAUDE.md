@@ -25,8 +25,9 @@ pnpm install
 pnpm -r typecheck          # tsc --noEmit everywhere
 pnpm -r test               # vitest
 pnpm --filter @lsp/sim run spread -- --clients 3 --beats 60
-pnpm --filter @lsp/party dev   # PartyKit dev server
-pnpm --filter @lsp/web dev     # Next.js shell
+pnpm --filter @lsp/party dev   # PartyKit dev server on :1999
+pnpm --filter @lsp/web dev     # Next.js shell on :3000 (NEXT_PUBLIC_PARTYKIT_HOST for a deployed party)
+pnpm --filter @lsp/web e2e     # Playwright smoke test of the diag page; starts both dev servers
 ```
 
 ## Working style
