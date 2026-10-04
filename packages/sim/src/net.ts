@@ -1,4 +1,4 @@
-import type { Rng } from "./rng.js";
+import type { Rng } from "./rng";
 
 /** One-way latency model: normal(mean, sd), clamped to at least 1 ms. */
 export interface LinkModel {

@@ -1,5 +1,5 @@
 import type * as Party from "partykit/server";
-import { RoomCore, initialRoomState, type Outbound, type RoomState } from "./core/index.js";
+import { RoomCore, initialRoomState, type Outbound, type RoomState } from "./core/index";
 
 /**
  * PartyKit host for RoomCore. One party per crew; the room code is the party id.

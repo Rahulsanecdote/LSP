@@ -1,6 +1,6 @@
 import { SyncEstimator, type SyncEstimatorOptions } from "@lsp/protocol";
-import { drawLatency, type LinkModel } from "./net.js";
-import { Rng } from "./rng.js";
+import { drawLatency, type LinkModel } from "./net";
+import { Rng } from "./rng";
 
 /**
  * Clock-sync convergence trial (amendment 2, v0.2.1). Feeds the real SyncEstimator with

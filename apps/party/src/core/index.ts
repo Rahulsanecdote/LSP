@@ -1,3 +1,3 @@
-export * from "./state.js";
-export * from "./beat.js";
-export * from "./room.js";
+export * from "./state";
+export * from "./beat";
+export * from "./room";

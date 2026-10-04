@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ACT_BEATS_REQUIRED, BEAT_INTERVAL_MS, BEAT_WINDOW_MS } from "./constants.js";
+import { ACT_BEATS_REQUIRED, BEAT_INTERVAL_MS, BEAT_WINDOW_MS } from "./constants";
 
 /**
  * Wire protocol. Every message is zod-validated JSON over the PartyKit WebSocket.

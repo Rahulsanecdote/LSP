@@ -1,6 +1,6 @@
 import { RoomCore, type Outbound } from "@lsp/party";
 import type { ClientMessage, ServerMessage } from "@lsp/protocol";
-import type { Handle, Sim } from "./sim.js";
+import type { Handle, Sim } from "./sim";
 
 /** Something that can receive server frames after a delay: a SimClient. */
 export interface Endpoint {

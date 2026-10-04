@@ -9,10 +9,10 @@ import {
   type Schedule,
   type ServerMessage,
 } from "@lsp/protocol";
-import { drawLatency, type LinkModel } from "./net.js";
-import type { Rng } from "./rng.js";
-import type { Endpoint, SimServer } from "./server.js";
-import type { Handle, Sim } from "./sim.js";
+import { drawLatency, type LinkModel } from "./net";
+import type { Rng } from "./rng";
+import type { Endpoint, SimServer } from "./server";
+import type { Handle, Sim } from "./sim";
 
 export interface SimClientOptions {
   cid: string;

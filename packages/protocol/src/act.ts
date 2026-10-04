@@ -1,6 +1,6 @@
-import { ACT_BEATS_REQUIRED, ACT_MAX_BEATS } from "./constants.js";
-import type { ActResult, PerRoleResult, Role } from "./messages.js";
-import { ROLES } from "./messages.js";
+import { ACT_BEATS_REQUIRED, ACT_MAX_BEATS } from "./constants";
+import type { ActResult, PerRoleResult, Role } from "./messages";
+import { ROLES } from "./messages";
 
 /**
  * Consent act (SLICE_HANDOFF.md §5 "Consent act", clarified in v0.2.1 §3 and §7).

@@ -4,7 +4,7 @@
  * The only I/O in this package: argument parsing and printing. The simulation itself is pure.
  * Exits non-zero when the done-criterion fails so CI enforces it.
  */
-import { criterionConfig, formatReport, runSpread } from "../spread.js";
+import { criterionConfig, formatReport, runSpread } from "../spread";
 
 function arg(name: string, fallback: number): number {
   const i = process.argv.indexOf(`--${name}`);

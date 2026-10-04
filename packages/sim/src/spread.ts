@@ -1,10 +1,10 @@
 import type { RoomCore, TapRecord } from "@lsp/party";
 import { BEAT_INTERVAL_MS, BEAT_WINDOW_MS, ROLES, beatTime, median, type Role } from "@lsp/protocol";
-import { SimClient } from "./client.js";
-import { DEFAULT_LINKS, type LinkModel } from "./net.js";
-import { Rng } from "./rng.js";
-import { SimServer } from "./server.js";
-import { Sim } from "./sim.js";
+import { SimClient } from "./client";
+import { DEFAULT_LINKS, type LinkModel } from "./net";
+import { Rng } from "./rng";
+import { SimServer } from "./server";
+import { Sim } from "./sim";
 
 export interface ClientProfile {
   link: LinkModel;

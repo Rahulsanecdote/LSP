@@ -1,4 +1,4 @@
-import { SYNC_MIN_SAMPLES, SYNC_RTT_REJECT_FACTOR, SYNC_WINDOW } from "./constants.js";
+import { SYNC_MIN_SAMPLES, SYNC_RTT_REJECT_FACTOR, SYNC_WINDOW } from "./constants";
 
 /**
  * NTP-style clock sync (SLICE_HANDOFF.md §5 "Sync").

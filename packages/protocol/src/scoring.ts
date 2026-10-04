@@ -1,4 +1,4 @@
-import type { Schedule } from "./messages.js";
+import type { Schedule } from "./messages";
 
 /**
  * Tap scoring (SLICE_HANDOFF.md §5 "Scoring").

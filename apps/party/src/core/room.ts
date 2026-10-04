@@ -22,8 +22,8 @@ import {
   type Snapshot,
   type Tap,
 } from "@lsp/protocol";
-import { issueSchedule, nextScheduleAt, scheduleDue } from "./beat.js";
-import { initialRoomState, type PlayerRecord, type RoomState, type TapRecord } from "./state.js";
+import { issueSchedule, nextScheduleAt, scheduleDue } from "./beat";
+import { initialRoomState, type PlayerRecord, type RoomState, type TapRecord } from "./state";
 
 /**
  * RoomCore: the whole room, as a host-independent state machine.
