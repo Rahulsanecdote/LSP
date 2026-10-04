@@ -253,6 +253,10 @@ export class RoomCore {
    * sync-corrected delta: median(receivedAt − cServerEst) over recent taps minus half the CURRENT
    * median rtt. Using the current rtt for every tap keeps early, few-sample rtt readings from
    * being frozen into the estimate. Null until there is an rtt and a tap.
+   *
+   * Sync-validation instrument ONLY (amendment 4). Averaging over a player's taps folds their
+   * systematic human bias into this number: a player who always taps 60 ms early looks like a
+   * clock that is 60 ms off. It must never feed scoring or act evaluation.
    */
   syncBiasOf(player: PlayerRecord): number | null {
     const rtt = this.rttOf(player);
