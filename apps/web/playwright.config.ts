@@ -3,7 +3,7 @@ import { defineConfig, devices } from "@playwright/test";
 /**
  * One smoke test for the Task 1 diagnostic page (amendment list, "Playwright in Task 1"):
  * the page loads, connects to a dev party server, and shows a numeric offset within 5 s.
- * Both dev servers are started by Playwright. Chromium comes from PLAYWRIGHT_BROWSERS_PATH or
+ * Both dev servers (wrangler dev for the room server, next dev for the page) are started by Playwright. Chromium comes from PLAYWRIGHT_BROWSERS_PATH or
  * the default install; `pnpm exec playwright install chromium` fetches it in CI.
  */
 const PARTY_PORT = 1999;
@@ -35,7 +35,7 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command: `pnpm --filter @lsp/party exec partykit dev --port ${PARTY_PORT}`,
+      command: `pnpm --filter @lsp/party exec wrangler dev --port ${PARTY_PORT}`,
       url: `http://127.0.0.1:${PARTY_PORT}/parties/main/E2E-PROBE`,
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,
@@ -47,7 +47,7 @@ export default defineConfig({
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,
       cwd: "../..",
-      env: { NEXT_PUBLIC_PARTYKIT_HOST: `127.0.0.1:${PARTY_PORT}` },
+      env: { NEXT_PUBLIC_PARTY_HOST: `127.0.0.1:${PARTY_PORT}` },
     },
   ],
 });

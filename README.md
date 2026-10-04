@@ -12,7 +12,7 @@ contract; `docs/design/` holds the episode specs. Task 1, the beat engine, is wh
 ```
 packages/protocol   shared types, zod message schemas, clock sync, scoring, consent act (pure)
 packages/sim        virtual-time simulation harness: seeded PRNG, latency links, simulated phones (pure)
-apps/party          PartyKit room server; src/core is the pure room state machine the sim also drives
+apps/party          Cloudflare Workers + Durable Objects room server; src/core is the pure room state machine the sim also drives
 apps/web            Next.js shell; Task 1 ships only the beat diagnostic at /diag/[code]
 ```
 
@@ -23,14 +23,17 @@ pnpm install
 pnpm -r typecheck                                   # tsc --noEmit everywhere
 pnpm -r test                                        # vitest
 pnpm --filter @lsp/sim run spread -- --clients 3 --beats 60   # the §5 spread criterion, exits 1 on failure
-pnpm --filter @lsp/party dev                        # PartyKit dev server on :1999
-pnpm --filter @lsp/web dev                          # Next.js on :3000 (set NEXT_PUBLIC_PARTYKIT_HOST for a deployed party)
+pnpm --filter @lsp/party dev                        # room server via wrangler dev on :1999
+pnpm --filter @lsp/party deploy:party               # wrangler deploy (prints the *.workers.dev host)
+pnpm --filter @lsp/web dev                          # Next.js on :3000 (set NEXT_PUBLIC_PARTY_HOST to the deployed host)
 pnpm --filter @lsp/web e2e                          # Playwright smoke test; starts both dev servers itself
 ```
 
 ## Room lifecycle
 
-A room is one PartyKit party; its id is the room code. The first connection creates it.
+A room is one Durable Object; its name is the room code. The Worker routes
+`/parties/main/<CODE>` (the URL shape `partysocket` builds) to it, and the first connection
+creates it.
 
 1. **Connect.** The server sends the current `schedule` at once, so a client can start rendering
    beats as soon as its clock sync is ready.
@@ -48,9 +51,10 @@ A room is one PartyKit party; its id is the room code. The first connection crea
    600 ms after its nominal time; a listed role that did not tap has missed it, and one miss by
    anyone resets the shared run. Three consecutive clean beats succeed; twelve beats without
    that fail. `actResult` carries per-role hits and deltas either way.
-7. **Persistence.** The whole room state is written to party storage after every change and
-   reloaded on start, so the room survives reconnects and Durable Object hibernation. Timers
-   are storage alarms for the same reason.
+7. **Persistence.** The whole room state is written to Durable Object storage after every
+   change and reloaded on start, so the room survives reconnects and hibernation. Sockets use
+   the WebSocket Hibernation API and carry their connection id as an attachment; timers are
+   storage alarms for the same reason.
 
 ## Clock sync
 
@@ -59,7 +63,7 @@ the room first starts: `now = Date.now() − anchor`. Everything scored is relat
 anchor, so absolute drift of the server's wall clock does not matter.
 
 `performance.now()` is **not** the room clock, although §5 names it. On Cloudflare Workers it
-is frozen during synchronous execution and resets when the Durable Object hibernates, so a
+is frozen during synchronous execution and resets when the Durable Object is evicted, so a
 schedule epoch persisted against it would be in a dead clock after the first idle minute.
 
 Clients never trust their own `Date.now()` for anything scored. Their local clock is
@@ -146,6 +150,21 @@ each tapping with normal human error around its locally rendered beat. Because i
 true instant of every tap, it can report the spread the server sees, the ground truth, and how
 well the audit columns recover that truth. `pnpm --filter @lsp/sim run spread` prints the
 distributions and fails when the §5 criterion does not hold; CI runs it on every push.
+
+## Deploying
+
+The room server is a Cloudflare Worker with one Durable Object class, SQLite-backed so it runs
+on the free plan. (It began life on PartyKit; PartyKit's shared `partykit.dev` zone had hit its
+custom-domain limit at deploy time, see the Task 1 report.)
+
+```bash
+pnpm --filter @lsp/party exec wrangler login       # once; opens a browser
+pnpm --filter @lsp/party deploy:party              # prints  https://lsp-party.<account>.workers.dev
+```
+
+Set `NEXT_PUBLIC_PARTY_HOST` to that host **without** the protocol (`lsp-party.<account>.workers.dev`)
+wherever the web app is built, e.g. the Vercel project's environment variables, with the project's
+root directory set to `apps/web`. The client picks `wss://` for any non-localhost host.
 
 ## Licence
 

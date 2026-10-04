@@ -37,7 +37,10 @@ export function setRole(role: Role): void {
   }
 }
 
-/** PartyKit host, without protocol. Set NEXT_PUBLIC_PARTYKIT_HOST for a deployed party. */
+/**
+ * Room-server host, without protocol. Set NEXT_PUBLIC_PARTY_HOST to the deployed Worker, e.g.
+ * `lsp-party.<account>.workers.dev`; partysocket picks ws:// for localhost and wss:// otherwise.
+ */
 export function partyHost(): string {
-  return process.env.NEXT_PUBLIC_PARTYKIT_HOST ?? "127.0.0.1:1999";
+  return process.env.NEXT_PUBLIC_PARTY_HOST ?? "127.0.0.1:1999";
 }

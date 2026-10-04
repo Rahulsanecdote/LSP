@@ -2,7 +2,7 @@
   "name": "@lsp/party",
   "version": "0.1.0",
   "private": true,
-  "description": "PartyKit room server for Last Stand Protocol: clock, beat schedule, scoring, consent acts, state. The pure room core is exported for the sim and tests.",
+  "description": "Cloudflare Workers + Durable Objects room server for Last Stand Protocol: clock, beat schedule, scoring, consent acts, state. The pure room core is exported for the sim and tests.",
   "license": "AGPL-3.0-only",
   "type": "module",
   "main": "./src/core/index.ts",
@@ -13,13 +13,14 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "dev": "partykit dev",
-    "deploy": "partykit deploy"
+    "dev": "wrangler dev --port 1999",
+    "deploy:party": "wrangler deploy"
   },
   "dependencies": {
     "@lsp/protocol": "workspace:*"
   },
   "devDependencies": {
-    "partykit": "^0.0.115"
+    "@cloudflare/workers-types": "^4.20250214.0",
+    "wrangler": "^4.147.0"
   }
 }

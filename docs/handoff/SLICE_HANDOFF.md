@@ -377,3 +377,30 @@ Append a `## Task N report` section to this file as each task completes. Task 1:
 - **v0.1.0 — 2026-10-03.** Initial slice handoff. Scope: beat engine (Task 1), with Tasks 2–3 outlined.
 - **v0.2.1 — 2026-10-04.** Amendments from Task 1 planning: pure virtual-time sim, statistical clock-sync criterion, three added protocol messages; clarifications on act semantics, tie-break, server clock, evaluation grace. Added after the sim checkpoint: amendment 4 (server audit column and bias-corrected spread; real-device criterion read from it) and amendment 5 (estimator window 24; low-rtt filter evaluated and rejected with numbers).
 - **v0.2.0 — 2026-10-03.** Added Task 4 (Discriminator over fft.js) and Task 5 (counterfeit state machine + siege scheduler) as headless systems with bench pages; file map, scope, not-touch list and report format updated.
+
+---
+
+## Task 1 report (in progress)
+
+Opened during the build so deviations are logged where they happen. The spread tables, sim distribution and real-device results are filled in when the real-device run is done.
+
+### Deviations
+
+1. **Host moved from PartyKit to Cloudflare Workers + Durable Objects** (allowed by §2). `partykit deploy` failed on 2026-10-04 with:
+
+   ```
+   You have exceeded the limit of 10000 Workers custom domains on zone 'partykit.dev'.
+   ```
+
+   That is PartyKit's shared zone being full, not this project's configuration. The PartyKit adapter was replaced by a Worker (`apps/party/src/worker.ts`) routing `/parties/main/:room` to one Durable Object per room (`apps/party/src/room-do.ts`, class `BeatRoom`, SQLite-backed so it runs on the free plan), using the WebSocket Hibernation API and storage alarms, with the wall-clock anchor persisted in DO storage exactly as before. `RoomCore` did not change. Because the Worker keeps the PartyKit URL shape, the client transport (`partysocket`) and the diagnostic page are unchanged apart from the env var, renamed `NEXT_PUBLIC_PARTYKIT_HOST` → `NEXT_PUBLIC_PARTY_HOST`. Deploy is `pnpm --filter @lsp/party deploy:party` (`wrangler deploy`); pnpm 10 reserves the script name `deploy`.
+2. **Server clock is a persisted wall-clock anchor, not `performance.now()`** (clarification 6). Recorded there; repeated here because it is a departure from §5's literal text.
+3. **Scoring trusts `cServerEst`** (§5, accepted). The server records its own receive time and the audit estimate alongside it (amendment 4). A client can still fabricate hits; the audit columns make it visible after the fact, not preventable.
+
+### Real-device spread
+
+_Pending the real-device run: device, OS, browser, network per phone; 10 consecutive beats with Scored, Audit and Corrected spread; summary fractions; reconnects._
+
+### Sim distribution
+
+_Pending: the final `spread` CLI output pasted here at close._
+
