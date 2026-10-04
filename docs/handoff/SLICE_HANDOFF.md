@@ -1,5 +1,26 @@
 # SLICE HANDOFF — Last Stand Protocol: Vertical Slice
-Version 0.2.0 · 2026-10-03 · Handoff from Rimuru (design/architecture) to Claude Code
+Version 0.2.1 · 2026-10-04 · Handoff from Rimuru (design/architecture) to Claude Code
+
+## Amendments (v0.2.1)
+
+Agreed between Rimuru and Claude Code during Task 1 planning, 2026-10-04. Amendments change the text of §5; clarifications fix a reading of it. Anything that comes up during the build is a deviation and belongs in the Task 1 report, not here.
+
+### Amendments
+
+1. **Sim is pure.** `packages/sim` is a virtual-time, deterministic simulator: no network, no `Date.now()`, seeded PRNG only. §5's "connect to a local party server" was a spec error; CLAUDE.md's purity rule wins. There is no live mode in Task 1. The real network is covered by the real-device test. A live driver, if ever wanted, lives in `apps/party/scripts/`, never in `packages/sim`.
+2. **Clock-sync criterion is statistical.** The criterion as written ("within ±10 ms … within 4 round trips") was probabilistic under the stated noise: with per-direction sd 30 ms the median of 4 offset samples has an error sd near 13 ms, so a single-seed test fails by chance about half the time. The criterion now reads: over 1,000 seeded runs under 80 ± 30 ms one-way latency, (a) median absolute offset error ≤ 10 ms after 4 round trips, (b) median absolute error ≤ 5 ms after 12 round trips, (c) 95th-percentile absolute error ≤ 20 ms after 12 round trips. The test prints the error distribution. No literal changed.
+3. **Three messages added to the protocol.** `hello` (client → server: `cid`, `role`), `snapshot` (server → client on connect/reconnect: current schedule, players, active act), and `stats` (server → room: per-client hit rate, median |delta|, sample count, keyed by an anonymous label). All zod-validated in `packages/protocol`.
+
+### Clarifications
+
+3. **Consent act.** The run is shared: one miss by any listed role resets every role's run. A listed role that does not tap on a beat has missed that beat. An act is capped at 12 beats; on the cap the server emits `actResult { ok: false }` with `perRole` filled so the crew can see who broke the run. Late joiner: taps from roles not in `roles` are ignored, and taps from a connection that joined after `actStart` are ignored. A listed role that disconnects and reconnects during the act stays listed and keeps its position in the run; reconnect never resets anyone.
+4. **Tie at exactly ±260 ms.** `beatIndex = floor((serverTime − epoch) / interval + 0.5)`. A tap exactly halfway between two beats belongs to the later beat, on both sides. Documented in the scorer and tested at ±259, ±260, ±261 ms.
+6. **Server clock.** Room time is server wall-clock ms minus a room-start anchor persisted in room storage. `performance.now()` cannot be the room clock on Workers: it is frozen during synchronous execution and resets on hibernation. All scoring is relative to the one anchor, so absolute drift does not matter. Explained in the README.
+7. **Evaluation grace.** A beat closes for act evaluation 600 ms after its nominal time (hit window unchanged at ±150 ms). A tap arriving after its beat has closed is scored as a miss for that beat and is never reassigned to the next one.
+
+Accepted as-is: scoring trusts `cServerEst` for the slice; the server records its own receive time alongside it for audit (one-line note in the Task 1 report). Playwright in Task 1 is one smoke test of the diagnostic page: loads, connects to a dev party server, shows a numeric offset within 5 s.
+
+---
 
 Self-contained. Execute without conversation history. Companion design docs: `docs/design/ep1-descent.md` (read §1 and §4 before Task 2) and `docs/design/ep5-dead-vowel.md` (read §1–§2 and §5 before Tasks 4–5). Neither is needed for Task 1.
 
@@ -340,4 +361,5 @@ Append a `## Task N report` section to this file as each task completes. Task 1:
 ## 10. Version
 
 - **v0.1.0 — 2026-10-03.** Initial slice handoff. Scope: beat engine (Task 1), with Tasks 2–3 outlined.
+- **v0.2.1 — 2026-10-04.** Amendments from Task 1 planning: pure virtual-time sim, statistical clock-sync criterion, three added protocol messages; clarifications on act semantics, tie-break, server clock, evaluation grace.
 - **v0.2.0 — 2026-10-03.** Added Task 4 (Discriminator over fft.js) and Task 5 (counterfeit state machine + siege scheduler) as headless systems with bench pages; file map, scope, not-touch list and report format updated.
