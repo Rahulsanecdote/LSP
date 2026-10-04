@@ -1,0 +1,25 @@
+{
+  "name": "@lsp/party",
+  "version": "0.1.0",
+  "private": true,
+  "description": "PartyKit room server for Last Stand Protocol: clock, beat schedule, scoring, consent acts, state. The pure room core is exported for the sim and tests.",
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "main": "./src/core/index.ts",
+  "types": "./src/core/index.ts",
+  "exports": {
+    ".": "./src/core/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "dev": "partykit dev",
+    "deploy": "partykit deploy"
+  },
+  "dependencies": {
+    "@lsp/protocol": "workspace:*"
+  },
+  "devDependencies": {
+    "partykit": "^0.0.115"
+  }
+}

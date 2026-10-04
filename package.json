@@ -29,7 +29,8 @@
   "type": "module",
   "pnpm": {
     "onlyBuiltDependencies": [
-      "esbuild"
+      "esbuild",
+      "workerd"
     ]
   }
 }
