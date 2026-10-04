@@ -4,3 +4,8 @@ dist/
 .env*
 .DS_Store
 coverage/
+.partykit/
+.vercel/
+test-results/
+playwright-report/
+*.tsbuildinfo
