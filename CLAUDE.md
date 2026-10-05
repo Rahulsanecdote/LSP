@@ -7,7 +7,7 @@ A browser-based, multiplayer cooperative narrative game. Three players on phones
 2. The design doc named in the task you're on (`docs/design/`). Design docs are spec for behaviour and content, not suggestions.
 
 ## Current task
-Task 1 — the beat engine — is built and its report is written (`docs/handoff/SLICE_HANDOFF.md`, "Task 1 report"). **Awaiting acceptance** and a design decision on the 150 ms window (real human tap error measured at ~57 ms sd). Do not start Tasks 2–5 until the report is accepted. (Task 4 may run in parallel in a separate session if asked.)
+Task 1 — the beat engine — is built and its report is written (`docs/handoff/SLICE_HANDOFF.md`, "Task 1 report"). **Awaiting acceptance** and a design decision on the 150 ms window: with three real devices the §5 criterion reads 15/19 beats (79%), caused by human tap error of ~50–58 ms sd, not sync. Do not start Tasks 2–5 until the report is accepted. (Task 4 may run in parallel in a separate session if asked.)
 
 ## Non-negotiables (summary — the handoff has the full list)
 - TypeScript `strict`, no `any`. pnpm workspaces. Node 20+.
