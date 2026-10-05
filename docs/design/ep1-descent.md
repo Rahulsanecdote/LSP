@@ -88,7 +88,7 @@ Then a single point of light at the bottom of the screen, 2,847 m down. Hold-to-
 
 **Location.** Inside the dive rig. Viewport shows black water, particulate drifting up (fluid sim, inverted gravity). Depth counter, pressure, hull strain.
 
-**Script.** At −1,380 m the Navigator gets a reflex prompt (exits < 3: she is in a tube). She holds. 94 streams out of 100 end "safe at facility, 00:11." Three end "seal failure, 00:01:31." The failed streams are thin and very bright.
+**Script.** At −1,380 m the Navigator gets a reflex prompt (exits < 3: she is in a tube). She holds. 94 streams out of 100 end "safe at facility, 00:11." Three end "seal failure, 00:01:29." The failed streams are thin and very bright.
 
 **Sense-tasks.**
 - NAVIGATOR must *tell the crew something is wrong without saying she saw it.* Her dialogue wheel offers four lines; only one ("Sarah, run a seal diagnostic for me, humor me") requests the fix without revealing the read. The others reveal, and reveal has consequences in Ep 3 and Ep 7.

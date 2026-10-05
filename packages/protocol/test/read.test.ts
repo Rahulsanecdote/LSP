@@ -4,9 +4,9 @@ import { BranchSetSchema, HORIZON_MS, PROJECTION_RATE_DEFAULT, parseClientMessag
 describe("Task 2 messages", () => {
   const streams = [
     { p: 0.94, label: "safe at facility, 00:11", terminalMs: 660_000, confidence: 0.94 },
-    { p: 0.02, label: "seal failure, 00:01:31", terminalMs: 91_000, confidence: 0.98 },
-    { p: 0.02, label: "seal failure, 00:01:31", terminalMs: 91_000, confidence: 0.98 },
-    { p: 0.02, label: "seal failure, 00:01:31", terminalMs: 91_000, confidence: 0.98 },
+    { p: 0.02, label: "seal failure, 00:01:29", terminalMs: 89_000, confidence: 0.98 },
+    { p: 0.02, label: "seal failure, 00:01:29", terminalMs: 89_000, confidence: 0.98 },
+    { p: 0.02, label: "seal failure, 00:01:29", terminalMs: 89_000, confidence: 0.98 },
   ];
 
   it("a BranchSet defaults projectionRate and holds the horizon literal", () => {
