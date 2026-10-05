@@ -7,7 +7,9 @@ import {
   nearestBeatIndex,
   parseServerMessage,
   type ActResult,
+  type BranchSet,
   type ClientMessage,
+  type ReadEvent,
   type Role,
   type Schedule,
   type Stats,
@@ -44,6 +46,19 @@ export interface BeatClientSnapshot {
   lastActResult: ActResult | null;
   /** count of frames the client could not parse */
   badFrames: number;
+  // ---- Task 2 ----
+  /** stream content; only ever non-null on the navigator's connection */
+  branchSet: BranchSet | null;
+  debt: number;
+  /** the server's view of an in-progress read, from snapshot or readEvent */
+  activeRead: { readId: string; label: string; startedAt: number } | null;
+  lastReadEvent: ReadEvent | null;
+  /** local → room-time delay between the server stamping lastReadEvent and us receiving it, ms */
+  lastReadLatencyMs: number | null;
+  /** true between our own pointerdown and the server's end event */
+  holding: boolean;
+  /** local time our hold began (performance.now()), or null */
+  holdStartedLocal: number | null;
 }
 
 export interface BeatClientOptions {
@@ -75,6 +90,13 @@ export class BeatClient {
   private lastActResult: ActResult | null = null;
   private badFrames = 0;
   private closed = false;
+  private branchSet: BranchSet | null = null;
+  private debt = 0;
+  private activeRead: BeatClientSnapshot["activeRead"] = null;
+  private lastReadEvent: ReadEvent | null = null;
+  private lastReadLatencyMs: number | null = null;
+  private holding = false;
+  private holdStartedLocal: number | null = null;
 
   constructor(opts: BeatClientOptions) {
     this.opts = opts;
@@ -110,7 +132,38 @@ export class BeatClient {
       stats: this.stats,
       lastActResult: this.lastActResult,
       badFrames: this.badFrames,
+      branchSet: this.branchSet,
+      debt: this.debt,
+      activeRead: this.activeRead,
+      lastReadEvent: this.lastReadEvent,
+      lastReadLatencyMs: this.lastReadLatencyMs,
+      holding: this.holding,
+      holdStartedLocal: this.holdStartedLocal,
     };
+  }
+
+  /** Navigator: the hand went down. Sends readStart with the current room-time estimate. */
+  readStart(): boolean {
+    if (!this.connected || !this.estimator.ready || this.holding) return false;
+    const cLocal = this.now();
+    this.holding = true;
+    this.holdStartedLocal = cLocal;
+    this.send({ t: "readStart", cid: this.opts.cid, cLocal, cServerEst: this.estimator.toServer(cLocal) });
+    this.emit();
+    return true;
+  }
+
+  /** Navigator: the hand lifted. */
+  readEnd(): boolean {
+    if (!this.holding) return false;
+    this.holding = false;
+    this.holdStartedLocal = null;
+    if (this.connected && this.estimator.ready) {
+      const cLocal = this.now();
+      this.send({ t: "readEnd", cid: this.opts.cid, cLocal, cServerEst: this.estimator.toServer(cLocal) });
+    }
+    this.emit();
+    return true;
   }
 
   /** The player tapped. Sends immediately with the current room-time estimate. */
@@ -151,6 +204,9 @@ export class BeatClient {
 
   private onClose(): void {
     this.connected = false;
+    // the server releases a read whose socket dropped; mirror that locally
+    this.holding = false;
+    this.holdStartedLocal = null;
     if (this.syncTimer) clearTimeout(this.syncTimer);
     this.syncTimer = null;
     this.burstRemaining = 0;
@@ -205,8 +261,28 @@ export class BeatClient {
       case "snapshot":
         this.label = msg.you;
         if (msg.schedule) this.schedule = msg.schedule;
+        this.debt = msg.debt;
+        this.activeRead = msg.activeRead;
         this.ensureBeatLoop();
         break;
+      case "branchSet":
+        this.branchSet = msg;
+        break;
+      case "readEvent": {
+        this.lastReadEvent = msg;
+        this.debt = msg.debt;
+        this.lastReadLatencyMs = this.estimator.ready ? this.estimator.toServer(this.now()) - msg.serverTime : null;
+        if (msg.phase === "start") this.activeRead = { readId: msg.readId, label: msg.label, startedAt: msg.serverTime };
+        else {
+          this.activeRead = null;
+          // the server released our read (e.g. after a reconnect): stop claiming to hold
+          if (msg.label === this.label) {
+            this.holding = false;
+            this.holdStartedLocal = null;
+          }
+        }
+        break;
+      }
       case "tapScore":
         if (msg.cid === this.opts.cid) {
           this.taps++;

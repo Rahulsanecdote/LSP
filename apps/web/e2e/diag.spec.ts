@@ -7,7 +7,7 @@ test("diagnostic page connects to the party server and shows a numeric offset wi
   await page.goto(`/diag/${room}`);
 
   await expect(page.getByRole("heading", { level: 1 })).toContainText(room);
-  await expect(page.getByText("connected", { exact: false })).toBeVisible({ timeout: 5_000 });
+  await expect(page.locator("h1").getByText("connected", { exact: false })).toBeVisible({ timeout: 5_000 });
 
   // the §5 numbers: offset and rtt become numeric once the sync burst has 4 samples
   const offset = page.getByTestId("offset");
