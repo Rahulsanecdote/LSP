@@ -380,9 +380,162 @@ Append a `## Task N report` section to this file as each task completes. Task 1:
 
 ---
 
-## Task 1 report (in progress)
+## Task 1 report
 
-Opened during the build so deviations are logged where they happen. The spread tables, sim distribution and real-device results are filled in when the real-device run is done.
+Written 2026-10-05 after the real-device run. Status: **done-criteria met except the real-device criterion, which was run with two devices and sits exactly on the line; see "Verdict".** Awaiting acceptance.
+
+### Done-criteria
+
+| Criterion | Status | Evidence |
+|---|---|---|
+| typecheck, test, CI green | met | CI check + e2e jobs green on `main` (Node 20) |
+| Scorer boundaries ±259/260/261 | met | `packages/protocol/test/scoring.test.ts`; ties go to the later beat (clarification 4) |
+| Clock sync converges (amendment 2) | met | 1,000 seeds at 80 ± 30 ms: median 7.6 ms after 4 RTT; 4.5 ms / p95 14.5 ms after 12 |
+| Sim spread < 150 ms on ≥ 90% of 60 beats | met | 98.3% on seed 1; 10/10 seeds pass; distribution below |
+| 1,500 ms stall recovers within 3 beats | met | `packages/sim/test/stall.test.ts`: first tap after reconnect is a hit |
+| Consent act: clean, single-miss reset, late joiner | met | `packages/protocol/test/act.test.ts` + `apps/party/test/room.test.ts` (reconnect keeps position; late tap stays a miss; 12-beat cap) |
+| Diagnostic page on iOS Safari and Android Chrome, 2 phones + laptop, 10 beats, spread < 150 on ≥ 9 | **partial** | Run with one Android phone + one Mac (no iOS device). 20 beats: 18/20 under 150 on every column; beats 85–94 10/10, beats 95–104 8/10. Details below |
+| README | met | root `README.md` |
+
+### Real-device run (2026-10-05)
+
+Two devices, not the three §5 asks for.
+
+| Device | OS / browser | Network | RTT (server) | Sync bias |
+|---|---|---|---|---|
+| Samsung Galaxy S26 Ultra | Android, browser not recorded | not recorded (cellular intended) | not recorded | not recorded |
+| Apple Mac laptop | macOS, browser not recorded | not recorded (Wi-Fi assumed) | not recorded | not recorded |
+
+Room server: `lsp-party.rahulvarma2105.workers.dev` (Cloudflare Workers + Durable Objects). Web: `lsp-nu-amber.vercel.app`.
+
+20 consecutive beats, both devices tapping on every one. Spread = max − min of the two deltas.
+
+| Beat | Scored | Audit | Corrected |
+|---|---|---|---|
+| 85 | 83 | 7 | 81 |
+| 86 | 25 | 22 | 27 |
+| 87 | 93 | 94 | 91 |
+| 88 | 16 | 16 | 14 |
+| 89 | 61 | 134 | 63 |
+| 90 | 57 | 51 | 55 |
+| 91 | 10 | 10 | 12 |
+| 92 | 10 | 52 | 12 |
+| 93 | 124 | 126 | 122 |
+| 94 | 111 | 135 | 113 |
+| 95 | 25 | 73 | 27 |
+| 96 | 76 | 79 | 78 |
+| 97 | 41 | 44 | 39 |
+| 98 | **176** | **179** | **174** |
+| 99 | 62 | 149 | 64 |
+| 100 | 64 | 61 | 61 |
+| 101 | 11 | 15 | 13 |
+| 102 | **155** | **153** | **152** |
+| 103 | 41 | 41 | 39 |
+| 104 | 66 | 67 | 64 |
+
+| Column | < 150 ms | < 180 ms | median | p90 | max |
+|---|---|---|---|---|---|
+| Scored (§5 as written) | 18/20 | 20/20 | 62 | 124 | 176 |
+| Audit (amendment 4, pessimistic) | 18/20 | 20/20 | 67 | 149 | 179 |
+| Corrected (amendment 4, best estimate) | 18/20 | 20/20 | 63 | 122 | 174 |
+
+Reading:
+
+- **Clock sync is proven on real devices.** Corrected and Scored agree within ~3 ms on every beat, i.e. the server's independent estimate of each device's clock error is a few ms. The two over-window beats appear identically in all three columns, so they are human timing, not clocks or network.
+- **The audit column behaves as predicted.** It departs from Scored by 3 ms at the median, 73 ms at p90 and 87 ms at worst: single-trip transit jitter, consistent with one device on a jittery link. It is the right instrument for catching a sync failure and the wrong one for judging agreement beat by beat; the Corrected column is the read.
+- **Human tap error is ~57 ms sd per player, not the 40 ms the handoff and sim assumed.** Derived from the 20 two-player differences (57.6 ms from mean |d|, 56.1 ms from rms). This is the finding that matters for the window. Monte Carlo on independent normal tap errors:
+
+  | per-player sd | 2 players < 150 | 3 players < 150 | 3 players < 180 |
+  |---|---|---|---|
+  | 40 ms (sim assumption) | 99% | 98% | 99.6% |
+  | 58 ms (measured) | 93% | 84% | 93% |
+
+  The sim at `--human 58` confirms it: the §5 criterion passes on only 1/10 seeds (seed 1: 80.0% of beats under 150 ms, p50 110 ms, p90 176 ms, max 242 ms). With the measured error, three players on a 150 ms window would land near 84%, under the 90% criterion; a 180 ms window brings that to ~93%. This is a 20-beat, two-person sample from people learning the rhythm, so read the sd as roughly 50–65 ms.
+- **Likely sources** (design levers, not engine fixes): mobile-browser touch-to-event latency is variable by tens of ms, and players anticipate or trail a visual cue by a personal, fairly stable amount. A per-player calibration step that measures and subtracts a habitual lead/lag would cut the sd without widening the window. Not built; it is a design decision.
+
+### Verdict
+
+The slice goal, three phones sharing a 520 ms beat accurately enough for the consent mechanic, is **met on the engine side**: the server owns the clock, beats are scheduled rather than pushed, sync on real devices is accurate to a few ms, and a 1.5 s stall is invisible to timing. The **kill criterion is not triggered**: real devices reach < 150 ms on 18/20 beats with two devices and no sync failure was observed.
+
+What is marginal is the **150 ms window against real human tap error**, which is about 57 ms sd rather than 40. The window is a design literal and was not changed. Options for the design side, in the order the data suggests: (a) widen the window to 180 ms, (b) add per-player tap calibration, (c) make the Counterfeit's tell easier. A three-device run (iOS device still untested) should follow whichever is chosen.
+
+### Sim distribution (final, `pnpm --filter @lsp/sim run spread -- --clients 3 --beats 60`)
+
+```
+spread: 60 beats measured from beat 6, 3 clients, human sd 40 ms, seed 1, 38.4 s simulated
+  c1 navigator   link  40±15  ms taps  72 hits  72 mean Δ    0.7 ms  median |Δ|  22.6 ms  sync err    0.0 ms
+  c2 synaesthete link 120±40  ms taps  71 hits  71 mean Δ    6.2 ms  median |Δ|  28.9 ms  sync err   -6.4 ms
+  c3 theorist    link 250±80  ms taps  68 hits  68 mean Δ    7.0 ms  median |Δ|  34.6 ms  sync err    1.9 ms
+  per-beat spread, server-measured (max − min of deltaMs from cServerEst) — the §5 criterion:
+    0– 25 ms |   6 ################
+   25– 50 ms |  14 #####################################
+   50– 75 ms |  15 ########################################
+   75–100 ms |  10 ###########################
+  100–125 ms |  10 ###########################
+  125–150 ms |   4 ###########
+  150–175 ms |   1 ###
+  175–200 ms |   0 
+  200–225 ms |   0 
+  225–250 ms |   0 
+  250–275 ms |   0 
+  275–300 ms |   0 
+  300+    ms |   0 
+  p50 69 ms   p90 117 ms   max 167 ms   < 150 ms on 98.3% of beats (need ≥ 90%)
+  per-beat spread, ground truth (true tap instants; includes clock-sync error, which cancels out of the server view):
+    0– 25 ms |   7 ####################
+   25– 50 ms |  12 ##################################
+   50– 75 ms |  14 ########################################
+   75–100 ms |  12 ##################################
+  100–125 ms |  10 #############################
+  125–150 ms |   4 ###########
+  150–175 ms |   1 ###
+  175–200 ms |   0 
+  200–225 ms |   0 
+  225–250 ms |   0 
+  250–275 ms |   0 
+  275–300 ms |   0 
+  300+    ms |   0 
+  p50 67 ms   p90 123 ms   max 164 ms   < 150 ms on 98.3% of beats (need ≥ 90%)
+  per-beat spread, server AUDIT column (receivedAt − rtt/2; amendment 4) — 60/60 beats audited; per-tap audit error vs truth p50 25.3 p90 105.3 max 195.1 ms (= one-way transit jitter):
+    0– 25 ms |   3 ###########
+   25– 50 ms |   6 ######################
+   50– 75 ms |  11 ########################################
+   75–100 ms |   8 #############################
+  100–125 ms |   4 ###############
+  125–150 ms |  10 ####################################
+  150–175 ms |   9 #################################
+  175–200 ms |   6 ######################
+  200–225 ms |   0 
+  225–250 ms |   1 ####
+  250–275 ms |   0 
+  275–300 ms |   2 #######
+  300+    ms |   0 
+  p50 115 ms   p90 194 ms   max 295 ms   < 150 ms on 70.0% of beats (need ≥ 90%)
+  per-beat spread, BIAS-CORRECTED (deltaMs + server's per-client syncBias) — error vs truth p50 4.5 p90 12.5 max 32.9 ms:
+    0– 25 ms |   6 ################
+   25– 50 ms |  14 #####################################
+   50– 75 ms |  15 ########################################
+   75–100 ms |  10 ###########################
+  100–125 ms |  10 ###########################
+  125–150 ms |   4 ###########
+  150–175 ms |   1 ###
+  175–200 ms |   0 
+  200–225 ms |   0 
+  225–250 ms |   0 
+  250–275 ms |   0 
+  275–300 ms |   0 
+  300+    ms |   0 
+  p50 68 ms   p90 118 ms   max 167 ms   < 150 ms on 98.3% of beats (need ≥ 90%)
+  server sync-bias estimate per client (should be −sync err above): c1 2.8 ms (client −0.0), c2 3.4 ms (client −-6.4), c3 2.0 ms (client −1.9)
+  PASS
+```
+
+### Protocol deviations from §5 as written
+
+- Three messages added (`hello`, `snapshot`, `stats`), `ping.prev`, `tapScore.auditDeltaMs`, and `stats.recentBeats` / per-client `rttMs`, `syncBiasMs` (amendments 3, 4).
+- Sync burst is 8 round trips, estimator window 24, median over the whole window (amendments 4, 5).
+- Server clock is a persisted wall-clock anchor (clarification 6).
+- Beats close 600 ms after nominal for act evaluation; late taps stay misses (clarification 7).
 
 ### Deviations
 
@@ -396,12 +549,7 @@ Opened during the build so deviations are logged where they happen. The spread t
 2. **Server clock is a persisted wall-clock anchor, not `performance.now()`** (clarification 6). Recorded there; repeated here because it is a departure from §5's literal text.
 3. **Toolchain pinned to hold the Node 20 floor** (§2 "Node 20+"). Node 20 reached end of life in April 2026 and current tooling has moved past it: `@commitlint/cli` ≥ 20 and `wrangler` ≥ 4.87.0 require Node 22, and `undici` 8 requires 22.19. To keep `engines.node >= 20` honest, commitlint is pinned to 19.x and wrangler to 4.86.0 (the last release allowing Node 20), with pnpm overrides lifting wrangler's bundled `undici`, `ws`, `sharp` and `esbuild` to patched versions that still run on Node 20. CI runs on Node 20. This will keep breaking on dependency bumps; the recommendation is to raise the floor to Node 22 (`engines`, `.nvmrc`, CI) as a §2 amendment. Not done here because §2 is a hard constraint and the change is the design side's call.
 4. **Scoring trusts `cServerEst`** (§5, accepted). The server records its own receive time and the audit estimate alongside it (amendment 4). A client can still fabricate hits; the audit columns make it visible after the fact, not preventable.
+5. **Real-device run used two devices, not three, and no iOS device.** One Samsung Galaxy S26 Ultra (Android) and one Mac laptop; browsers, networks, the server RTT and sync-bias readings were not recorded at the time. The two-device spread is systematically smaller than a three-device spread, so the 18/20 result is an upper bound on what three devices would show; the projection in "Real-device run" quantifies that. Repeat with three devices including an iPhone once the window decision is made.
 
-### Real-device spread
 
-_Pending the real-device run: device, OS, browser, network per phone; 10 consecutive beats with Scored, Audit and Corrected spread; summary fractions; reconnects._
-
-### Sim distribution
-
-_Pending: the final `spread` CLI output pasted here at close._
 
