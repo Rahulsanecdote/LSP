@@ -382,7 +382,7 @@ Append a `## Task N report` section to this file as each task completes. Task 1:
 
 ## Task 1 report
 
-Written 2026-10-05 after two real-device runs (two devices, then three). Status: **engine done-criteria met; the real-device criterion is NOT met at the 150 ms window with three devices (15/19 beats, best 10-beat window 9/10, worst 7/10) and the cause is human tap error, not sync; see "Verdict".** Awaiting acceptance.
+Written 2026-10-05 after two real-device runs (two devices, then three). Status: **engine done-criteria met; the real-device criterion is NOT met at the 150 ms window with three devices (15/19 beats, best 10-beat window 9/10, worst 7/10) and the cause is human tap error, not sync; see "Verdict".** **Accepted and closed by Rimuru, 2026-10-05.** The window decision (150 vs 180, calibration, Counterfeit tell) is open on the design side and gates Task 3's S7, not Task 2.
 
 ### Done-criteria
 
@@ -394,7 +394,7 @@ Written 2026-10-05 after two real-device runs (two devices, then three). Status:
 | Sim spread < 150 ms on ≥ 90% of 60 beats | met | 98.3% on seed 1; 10/10 seeds pass; distribution below |
 | 1,500 ms stall recovers within 3 beats | met | `packages/sim/test/stall.test.ts`: first tap after reconnect is a hit |
 | Consent act: clean, single-miss reset, late joiner | met | `packages/protocol/test/act.test.ts` + `apps/party/test/room.test.ts` (reconnect keeps position; late tap stays a miss; 12-beat cap) |
-| Diagnostic page on iOS Safari and Android Chrome, 2 phones + laptop, 10 beats, spread < 150 on ≥ 9 | **not met** | Three-device run: 15/19 beats under 150 (best 10-beat window 9/10, worst 7/10); all columns agree, so the misses are human timing, not sync. iOS device: not recorded. Details below |
+| Diagnostic page on iOS Safari and Android Chrome, 2 phones + laptop, 10 beats, spread < 150 on ≥ 9 | **not met at 150 ms; page works on both** | Three-device run (MacBook, S26 Ultra/Chrome, iPhone 16 Pro Max/Safari on cellular): 15/19 beats under 150 (best 10-beat window 9/10, worst 7/10); all columns agree, so the misses are human timing, not sync. Details below |
 | README | met | root `README.md` |
 
 ### Real-device run A (2026-10-05): two devices
@@ -403,8 +403,10 @@ Two devices, not the three §5 asks for; run B below has three.
 
 | Device | OS / browser | Network | RTT (server) | Sync bias |
 |---|---|---|---|---|
-| Samsung Galaxy S26 Ultra | Android, browser not recorded | not recorded (cellular intended) | not recorded | not recorded |
-| Apple Mac laptop | macOS, browser not recorded | not recorded (Wi-Fi assumed) | not recorded | not recorded |
+| (1) MacBook | macOS, desktop browser | home Wi-Fi | not captured | not captured |
+| (2) Samsung Galaxy S26 Ultra | Android, Chrome | cellular | not captured | not captured |
+
+One person tapped both devices, so run A's "human error" is one player's two hands, not two players.
 
 Room server: `lsp-party.rahulvarma2105.workers.dev` (Cloudflare Workers + Durable Objects). Web: `lsp-nu-amber.vercel.app`.
 
@@ -455,7 +457,13 @@ Reading:
 
 ### Real-device run B (2026-10-05): three devices
 
-Samsung Galaxy S26 Ultra, Mac laptop, and a third device (make, OS, browser not recorded). Networks, server RTT and sync-bias readings not recorded. 19 consecutive beats with all three tapping (beats 64–82; beat 83 had two tappers and is excluded).
+| Device | OS / browser | Network | Tapper | RTT (server) | Sync bias |
+|---|---|---|---|---|---|
+| (1) MacBook | macOS, desktop browser | home Wi-Fi | person 1 | not captured | not captured |
+| (2) Samsung Galaxy S26 Ultra | Android, Chrome | home Wi-Fi | person 1 | not captured | not captured |
+| (3) iPhone 16 Pro Max | iOS, Safari | cellular | person 2 | not captured | not captured |
+
+19 consecutive beats with all three tapping (beats 64–82; beat 83 had two tappers and is excluded). This run covers both mobile browsers §5 names, with the cellular device being the iPhone on Safari, the stricter of the two for timers and haptics; it still agreed with the Wi-Fi devices within single-digit milliseconds on the Corrected column.
 
 | Beat | Scored | Audit | Corrected |
 |---|---|---|---|
@@ -507,7 +515,7 @@ The slice goal, three phones sharing a 520 ms beat accurately enough for the con
 
 The **§5 real-device criterion is not met at 150 ms with three devices**: 15/19 beats, 79%, against a requirement of 90%. Honest effort was made; the number is reported, not adjusted. **The kill criterion as written ("real phones cannot reach < 150 ms spread on 9/10 beats") is reached on the best ten-beat window and missed on the worst**, and the cause is unambiguous: human tap error of 50–58 ms sd per player against a design assumption of 40, with no sync failure observed in either run. This is therefore a product decision about the window and the cue, not an engineering shortfall in the beat engine, and the turn-based fallback is not indicated by the data: sync is good and 180 ms would already clear the bar at the measured error.
 
-Options for the design side, in the order the data suggests: (a) widen the window to 180 ms (projected 91–97% for three players; the observed run reads 84% at 180 and 95% at 200), (b) add per-player tap calibration to cut the sd without widening, (c) make the Counterfeit's tell easier. iOS Safari is still untested; the next run should include an iPhone and record browser, network, RTT and sync bias per device from the Crew table.
+Options for the design side, in the order the data suggests: (a) widen the window to 180 ms (projected 91–97% for three players; the observed run reads 84% at 180 and 95% at 200), (b) add per-player tap calibration to cut the sd without widening, (c) make the Counterfeit's tell easier. iOS Safari on cellular is covered by run B; future runs should record RTT and sync bias per device from the Crew table.
 
 ### Sim distribution (final, `pnpm --filter @lsp/sim run spread -- --clients 3 --beats 60`)
 
@@ -599,7 +607,7 @@ spread: 60 beats measured from beat 6, 3 clients, human sd 40 ms, seed 1, 38.4 s
 2. **Server clock is a persisted wall-clock anchor, not `performance.now()`** (clarification 6). Recorded there; repeated here because it is a departure from §5's literal text.
 3. **Toolchain pinned to hold the Node 20 floor** (§2 "Node 20+"). Node 20 reached end of life in April 2026 and current tooling has moved past it: `@commitlint/cli` ≥ 20 and `wrangler` ≥ 4.87.0 require Node 22, and `undici` 8 requires 22.19. To keep `engines.node >= 20` honest, commitlint is pinned to 19.x and wrangler to 4.86.0 (the last release allowing Node 20), with pnpm overrides lifting wrangler's bundled `undici`, `ws`, `sharp` and `esbuild` to patched versions that still run on Node 20. CI runs on Node 20. This will keep breaking on dependency bumps; the recommendation is to raise the floor to Node 22 (`engines`, `.nvmrc`, CI) as a §2 amendment. Not done here because §2 is a hard constraint and the change is the design side's call.
 4. **Scoring trusts `cServerEst`** (§5, accepted). The server records its own receive time and the audit estimate alongside it (amendment 4). A client can still fabricate hits; the audit columns make it visible after the fact, not preventable.
-5. **Real-device runs were under-documented and iOS was not covered.** Run A used two devices (Samsung Galaxy S26 Ultra, Mac laptop); run B added a third device whose make was not recorded. Browsers, networks, server RTT and sync-bias readings were not recorded for either run. No iOS Safari device was tested. The next run should capture the Crew table per device.
+5. **Real-device runs did not capture the Crew table.** Server RTT and sync-bias per device were not recorded for either run, and run A had one person tapping both devices. Devices, browsers and networks are recorded above. Future runs should capture the Crew table per device.
 
 
 
