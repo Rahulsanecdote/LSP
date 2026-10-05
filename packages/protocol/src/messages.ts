@@ -204,7 +204,7 @@ const unit = z.number().min(0).max(1);
 export const StreamSchema = z.object({
   /** likelihood; drawn as width */
   p: unit,
-  /** plain-language terminus, e.g. "seal failure, 00:01:31" */
+  /** plain-language terminus, e.g. "seal failure, 00:01:29" */
   label: z.string().min(1).max(80),
   /** projected ms at which this stream ends */
   terminalMs: z.number().nonnegative().finite(),
