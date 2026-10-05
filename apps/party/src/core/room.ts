@@ -1,6 +1,8 @@
 import {
   ACT_BEATS_REQUIRED,
   BEAT_CLOSE_GRACE_MS,
+  READ_DEBT,
+  READ_DEBT_PAST_HORIZON,
   actResult,
   applyTap,
   beatTime,
@@ -13,17 +15,22 @@ import {
   startAct,
   type ActStart,
   type BeatSpread,
+  type BranchSet,
   type ClientMessage,
   type ClientStats,
   type Hello,
   type Ping,
+  type ReadEnd,
+  type ReadEvent,
+  type ReadStart,
   type Role,
   type ServerMessage,
   type Snapshot,
   type Tap,
 } from "@lsp/protocol";
 import { issueSchedule, nextScheduleAt, scheduleDue } from "./beat";
-import { initialRoomState, type PlayerRecord, type RoomState, type TapRecord } from "./state";
+import { S2_SEAL_BRANCHSET } from "./fixtures";
+import { initialRoomState, migrateRoomState, type PlayerRecord, type ReadRecord, type RoomState, type TapRecord } from "./state";
 
 /**
  * RoomCore: the whole room, as a host-independent state machine.
@@ -54,6 +61,10 @@ export interface RoomCoreOptions {
   rttCap?: number;
   /** beats carried in `stats.recentBeats` (default 20) */
   recentBeatsCap?: number;
+  /** reads kept in the log (default 200) */
+  readLogCap?: number;
+  /** the BranchSet a fresh room starts with (default: the S2 seal fixture) */
+  branchSet?: BranchSet;
 }
 
 export class RoomCore {
@@ -62,6 +73,7 @@ export class RoomCore {
   private readonly recentDeltaCap: number;
   private readonly rttCap: number;
   private readonly recentBeatsCap: number;
+  private readonly readLogCap: number;
   private _state: RoomState;
   private _dirty = false;
   private _lastError: string | null = null;
@@ -72,7 +84,12 @@ export class RoomCore {
     this.recentDeltaCap = opts.recentDeltaCap ?? 50;
     this.rttCap = opts.rttCap ?? 24;
     this.recentBeatsCap = opts.recentBeatsCap ?? 20;
-    this._state = state;
+    this.readLogCap = opts.readLogCap ?? 200;
+    this._state = migrateRoomState(state);
+    if (this._state.branchSet === null) {
+      this._state.branchSet = opts.branchSet ?? S2_SEAL_BRANCHSET;
+      this._dirty = true;
+    }
   }
 
   get state(): RoomState {
@@ -111,10 +128,16 @@ export class RoomCore {
   onClose(connId: string): Outbound[] {
     const player = this.playerByConn(connId);
     if (!player) return [];
+    const out: Outbound[] = [];
+    // a dropped socket releases the read: the hand is no longer on the screen
+    if (this._state.activeRead && this._state.activeRead.cid === player.cid) {
+      out.push(...this.endRead(player, null, "disconnect"));
+    }
     player.connected = false;
     player.connId = null;
     this.touch();
-    return [this.statsMessage()];
+    out.push(this.statsMessage());
+    return out;
   }
 
   /** A raw inbound frame (string or parsed JSON). Invalid frames are dropped. */
@@ -180,6 +203,84 @@ export class RoomCore {
     return [{ to: { kind: "room" }, msg }];
   }
 
+  /** Replace the BranchSet (a scene change) and send it to every connected navigator. */
+  setBranchSet(branchSet: BranchSet): Outbound[] {
+    this._state.branchSet = branchSet;
+    this.touch();
+    return Object.values(this._state.players)
+      .filter((p) => p.connected && p.connId !== null && p.role === "navigator")
+      .map((p) => ({ to: { kind: "conn", connId: p.connId as string }, msg: branchSet }));
+  }
+
+  // -------------------------------------------------------------------------
+  // Task 2 — the Navigator's read (§6, amendment 6)
+  //
+  // Only the connected navigator can read; one read at a time; the server times the hold from
+  // its own receive times because DEBT is scored. Nothing inside a read touches anything but
+  // debt, activeRead and readLog ("cannot steer", design doc §1); the tests assert that.
+
+  private onReadStart(connId: string, msg: ReadStart): Outbound[] {
+    const player = this._state.players[msg.cid];
+    if (!player || player.connId !== connId || player.role !== "navigator") return [];
+    if (this._state.activeRead) return []; // already reading (duplicate pointerdown, or a second navigator)
+    const now = this.now();
+    const readId = `r${this._state.nextReadId++}`;
+    this._state.activeRead = { readId, cid: player.cid, startedAt: now, cServerEstStart: msg.cServerEst };
+    this.touch();
+    const ev: ReadEvent = { t: "readEvent", readId, label: player.label, phase: "start", serverTime: now, debt: this._state.debt };
+    return [{ to: { kind: "room" }, msg: ev }];
+  }
+
+  private onReadEnd(connId: string, msg: ReadEnd): Outbound[] {
+    const player = this._state.players[msg.cid];
+    const active = this._state.activeRead;
+    if (!player || player.connId !== connId || !active || active.cid !== player.cid) return [];
+    return this.endRead(player, msg.cServerEst, "release");
+  }
+
+  private endRead(player: PlayerRecord, cServerEstEnd: number | null, endedBy: "release" | "disconnect"): Outbound[] {
+    const active = this._state.activeRead;
+    const branchSet = this._state.branchSet;
+    if (!active || !branchSet) return [];
+    const now = this.now();
+    const durationMs = Math.max(0, now - active.startedAt);
+    const projectedMs = durationMs * branchSet.projectionRate;
+    const pastHorizon = projectedMs > branchSet.horizonMs;
+    const debtDelta = pastHorizon ? READ_DEBT_PAST_HORIZON : READ_DEBT;
+    this._state.debt += debtDelta;
+    const record: ReadRecord = {
+      readId: active.readId,
+      cid: active.cid,
+      startedAt: active.startedAt,
+      endedAt: now,
+      endedBy,
+      durationMs,
+      projectedMs,
+      pastHorizon,
+      debtDelta,
+      cServerEstStart: active.cServerEstStart,
+      cServerEstEnd,
+    };
+    this._state.readLog.push(record);
+    if (this._state.readLog.length > this.readLogCap) this._state.readLog.splice(0, this._state.readLog.length - this.readLogCap);
+    this._state.activeRead = null;
+    this.touch();
+    const ev: ReadEvent = {
+      t: "readEvent",
+      readId: active.readId,
+      label: player.label,
+      phase: "end",
+      serverTime: now,
+      debt: this._state.debt,
+      durationMs,
+      projectedMs,
+      pastHorizon,
+      debtDelta,
+      endedBy,
+    };
+    return [{ to: { kind: "room" }, msg: ev }];
+  }
+
   // -------------------------------------------------------------------------
   // Internals
 
@@ -193,6 +294,10 @@ export class RoomCore {
         return this.onTap(connId, msg);
       case "actStart":
         return this.startAct(msg.actId, msg.roles);
+      case "readStart":
+        return this.onReadStart(connId, msg);
+      case "readEnd":
+        return this.onReadEnd(connId, msg);
     }
   }
 
@@ -227,6 +332,10 @@ export class RoomCore {
     const out: Outbound[] = [];
     out.push(...this.ensureSchedule({ kind: "conn", connId }));
     out.push({ to: { kind: "conn", connId }, msg: this.snapshot(player) });
+    // Stream content goes to the Navigator's connection and nowhere else (§1 "Visible").
+    if (player.role === "navigator" && this._state.branchSet) {
+      out.push({ to: { kind: "conn", connId }, msg: this._state.branchSet });
+    }
     out.push(this.statsMessage());
     return out;
   }
@@ -374,6 +483,7 @@ export class RoomCore {
 
   private snapshot(you: PlayerRecord): Snapshot {
     const act = this._state.activeAct;
+    const read = this._state.activeRead;
     return {
       t: "snapshot",
       serverNow: this.now(),
@@ -381,6 +491,8 @@ export class RoomCore {
       schedule: this._state.schedule,
       players: Object.values(this._state.players).map((p) => ({ label: p.label, role: p.role, connected: p.connected })),
       activeAct: act ? { actId: act.actId, roles: [...act.roles], startBeat: act.startBeat, maxBeats: act.maxBeats } : null,
+      debt: this._state.debt,
+      activeRead: read ? { readId: read.readId, label: this._state.players[read.cid]?.label ?? "?", startedAt: read.startedAt } : null,
     };
   }
 

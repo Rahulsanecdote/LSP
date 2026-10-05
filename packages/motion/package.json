@@ -1,0 +1,15 @@
+{
+  "name": "@lsp/motion",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Spring easing for Last Stand Protocol, implemented from the damped-spring equations. Pure TypeScript: no I/O, no Date.now().",
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  }
+}
