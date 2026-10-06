@@ -45,13 +45,16 @@ export function layoutStreams(bs: BranchSet, aspect: number): StreamLayout[] {
   });
 }
 
-/** Where a stream's label sits, in CSS percent of the canvas. Clamped to the horizon. */
+/**
+ * Where a stream's label sits, in CSS percent of the canvas. Clamped to the horizon, and kept
+ * far enough from the side edges that a centred label up to 38vw wide stays on screen.
+ */
 export function labelPosition(l: StreamLayout, aspect: number): { leftPct: number; bottomPct: number } {
   const endY = Math.min(l.endY, HORIZON_Y);
   const len = (endY - PRESENT_Y) / Math.max(Math.cos(l.angle), 0.2);
   const x = 0.5 + (len * Math.sin(l.angle)) / Math.max(aspect, 0.1);
   const y = PRESENT_Y + len * Math.cos(l.angle);
-  return { leftPct: x * 100, bottomPct: y * 100 };
+  return { leftPct: Math.min(80, Math.max(20, x * 100)), bottomPct: y * 100 };
 }
 
 export function Streams({ branchSet, holding, pastHorizon, onGrow }: { branchSet: BranchSet | null; holding: boolean; pastHorizon: boolean; onGrow?: (g: number[]) => void }) {

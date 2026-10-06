@@ -126,6 +126,14 @@ export function GrayScott({ blobs, flares, onStatus }: { blobs: Blob[]; flares: 
   const quad = useMemo(() => new THREE.Mesh(new THREE.PlaneGeometry(2, 2), initMaterial), [initMaterial]);
   const readIdx = useRef(0);
   const initialised = useRef(false);
+  // When the crew changes, the blobs move; without a reset the old positions linger as rings
+  // the reaction only slowly absorbs. A fresh field re-forms in well under a second.
+  const layoutKey = blobs.map((b) => `${b.x.toFixed(3)},${b.y.toFixed(3)}`).join("|");
+  const lastLayoutKey = useRef(layoutKey);
+  if (lastLayoutKey.current !== layoutKey) {
+    lastLayoutKey.current = layoutKey;
+    initialised.current = false;
+  }
 
   useEffect(() => {
     simScene.add(quad);
