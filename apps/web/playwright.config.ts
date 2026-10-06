@@ -28,7 +28,7 @@ export default defineConfig({
         ...devices["Pixel 7"],
         // PW_CHROMIUM points at a system Chromium when the managed download is unavailable
         ...(process.env.PW_CHROMIUM
-          ? { launchOptions: { executablePath: process.env.PW_CHROMIUM, args: ["--no-proxy-server"] } }
+          ? { launchOptions: { executablePath: process.env.PW_CHROMIUM, args: ["--no-proxy-server", "--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist"] } }
           : {}),
       },
     },

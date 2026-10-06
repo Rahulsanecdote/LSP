@@ -25,6 +25,10 @@ Agreed between Rimuru and Claude Code during Task 1 planning, 2026-10-04. Amendm
    | 250 ± 80, +20% spikes ~Exp(300) | median of all | 28.6 / 105.4 | 16.9 / 48.3 |
    | 250 ± 80, +20% spikes ~Exp(300) | lowest-rtt half | 29.0 / 84.6 | 17.3 / 54.8 |
 
+6. **Task 2 decisions (2026-10-05).** (a) The read advances through projected time at `projectionRate` ms per held ms, carried in the BranchSet, default 15, so a hold reaches the 90 s horizon after 6 s of real time; `horizonMs: 90000` stays literal and one real-time number governs both the clip and the double-debt threshold. (b) Streams in Task 2 are spring-eased ribbons growing over 600 ms; the differential-growth port is its own item, Task 2b, before Task 3. (c) No `.riv` assets exist; the DEBT counter and stream labels are plain DOM with a documented Rive slot. (d) `BranchSet.streams[].confidence` is added, optional, defaulting to `p`; brightness = confidence, width = p. The S2 seal read is the fixture: one stream p 0.94 / confidence 0.94 "safe at facility, 00:11" at 660 000 ms, three streams p 0.02 / confidence 0.98 "seal failure, 00:01:29" at 89 000 ms (corrected by amendment 7). Hold duration is measured from the server's own receive times (debt is scored); client estimates are recorded for audit. Out of Task 2: reflex reads at 0.5, the DEBT 7/9/10 effects, and +3 VISIBILITY (§8 forbids a meter). The Synaesthete overlay is in Task 2 per §6, although the design doc's §4 lists it under Task 3; the handoff is the authority.
+
+7. **S2 fixture correction (2026-10-05).** The failure streams were first given `terminalMs: 91000` ("00:01:31", the book's minute and a half), which is past the 90 s horizon, so they clipped to black like the safe stream and every label read "past the horizon". That contradicted the same note's intent that the failure streams sit inside the horizon. Design intent wins: the failure terminus is 89 000 ms, label "seal failure, 00:01:29", and the S2 script in `docs/design/ep1-descent.md` says 00:01:29. The horizon rule stays strict (`projectedMs > 90000` is past); it is not made inclusive to rescue a fixture.
+
 ### Clarifications
 
 3. **Consent act.** The run is shared: one miss by any listed role resets every role's run. A listed role that does not tap on a beat has missed that beat. An act is capped at 12 beats; on the cap the server emits `actResult { ok: false }` with `perRole` filled so the crew can see who broke the run. Late joiner: taps from roles not in `roles` are ignored, and taps from a connection that joined after `actStart` are ignored. A listed role that disconnects and reconnects during the act stays listed and keeps its position in the run; reconnect never resets anyone.
@@ -203,6 +207,10 @@ Build `components/instruments/NavigatorRead` and `SynaestheteOverlay` against th
 - Shaders: port a tileable 3D noise and a Gray-Scott reaction-diffusion as GLSL from first principles (textbook formulas), not by copying repository code.
 
 Done when: the Navigator holds on one phone, the Synaesthete's phone flares within 200 ms, and the debt counter on the Theorist's phone increments — all server-mediated.
+
+## 6b. Task 2b — differential-growth streams (after Task 2, before Task 3)
+
+Port the differential-growth (differential-line) algorithm from its published description, not from any repository: nodes on a polyline attract to neighbours, repel nearby non-neighbours, align, and new nodes are inserted where neighbours separate. Drive the Navigator's streams with it so they grow over 600 ms as §1 of the design doc describes, replacing Task 2's spring-eased ribbons. Pure TypeScript simulation step in `packages/motion` (seeded, deterministic), rendered in R3F. Done when: a seeded run is reproducible under Vitest, and the S2 fixture's four streams grow without self-intersection on a phone at 60 fps.
 
 ## 7. Task 3 — scenes S2, S5, S7
 

@@ -45,3 +45,21 @@ export const SYNC_WINDOW = 24;
 
 /** Samples whose rtt exceeds this multiple of the running median rtt are rejected. */
 export const SYNC_RTT_REJECT_FACTOR = 2;
+
+// ---------------------------------------------------------------------------
+// Task 2 — the Navigator's read (SLICE_HANDOFF.md §6, amendment 6)
+
+/** Projected dive time beyond which streams run into black. Literal. */
+export const HORIZON_MS = 90_000;
+
+/** Projected ms per held ms when a BranchSet does not say otherwise: the horizon at 6 s of hold. */
+export const PROJECTION_RATE_DEFAULT = 15;
+
+/** DEBT for a read released inside the horizon. */
+export const READ_DEBT = 1;
+
+/** DEBT for a read released past the horizon ("double debt"). */
+export const READ_DEBT_PAST_HORIZON = 2;
+
+/** Streams grow over this long on a hold. */
+export const STREAM_GROW_MS = 600;

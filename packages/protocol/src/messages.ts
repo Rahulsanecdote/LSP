@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ACT_BEATS_REQUIRED, BEAT_INTERVAL_MS, BEAT_WINDOW_MS } from "./constants";
+import { ACT_BEATS_REQUIRED, BEAT_INTERVAL_MS, BEAT_WINDOW_MS, HORIZON_MS, PROJECTION_RATE_DEFAULT } from "./constants";
 
 /**
  * Wire protocol. Every message is zod-validated JSON over the PartyKit WebSocket.
@@ -145,6 +145,9 @@ export const SnapshotSchema = z.object({
       maxBeats: z.number().int().positive(),
     })
     .nullable(),
+  /** Task 2: current DEBT and whether a read is in progress (who, since when) */
+  debt: z.number().int().nonnegative(),
+  activeRead: z.object({ readId: id, label: z.string().min(1), startedAt: ms }).nullable(),
 });
 export type Snapshot = z.infer<typeof SnapshotSchema>;
 
@@ -194,6 +197,77 @@ export const StatsSchema = z.object({
 export type Stats = z.infer<typeof StatsSchema>;
 
 // ---------------------------------------------------------------------------
+// Task 2 — the Navigator's read (§6, amendment 6)
+
+const unit = z.number().min(0).max(1);
+
+export const StreamSchema = z.object({
+  /** likelihood; drawn as width */
+  p: unit,
+  /** plain-language terminus, e.g. "seal failure, 00:01:29" */
+  label: z.string().min(1).max(80),
+  /** projected ms at which this stream ends */
+  terminalMs: z.number().nonnegative().finite(),
+  /** drawn as brightness; defaults to p */
+  confidence: unit.optional(),
+});
+export type Stream = z.infer<typeof StreamSchema>;
+
+/** Sent to the Navigator's connection only. The Synaesthete never receives stream content. */
+export const BranchSetSchema = z.object({
+  t: z.literal("branchSet"),
+  streams: z.array(StreamSchema).min(3).max(7),
+  horizonMs: z.literal(HORIZON_MS),
+  /** projected ms per held ms */
+  projectionRate: z.number().positive().finite().default(PROJECTION_RATE_DEFAULT),
+});
+export type BranchSet = z.infer<typeof BranchSetSchema>;
+export type BranchSetInput = z.input<typeof BranchSetSchema>;
+
+export const ReadStartSchema = z.object({
+  t: z.literal("readStart"),
+  cid: id,
+  cLocal: ms,
+  cServerEst: ms,
+});
+export type ReadStart = z.infer<typeof ReadStartSchema>;
+
+export const ReadEndSchema = z.object({
+  t: z.literal("readEnd"),
+  cid: id,
+  cLocal: ms,
+  cServerEst: ms,
+});
+export type ReadEnd = z.infer<typeof ReadEndSchema>;
+
+/**
+ * Broadcast to the room on every read start and end. Carries WHO is reading and the cost,
+ * never WHAT they see. The Synaesthete's flare and the Theorist's DEBT counter both hang off it.
+ */
+export const ReadEventSchema = z.object({
+  t: z.literal("readEvent"),
+  readId: id,
+  /** the reader's anonymous player label */
+  label: z.string().min(1),
+  phase: z.enum(["start", "end"]),
+  /** room time of the start or the release, from the server's own clock */
+  serverTime: ms,
+  /** DEBT after this event */
+  debt: z.number().int().nonnegative(),
+  /** end only: how long the read was held, in server time */
+  durationMs: ms.optional(),
+  /** end only: durationMs × projectionRate */
+  projectedMs: ms.optional(),
+  /** end only */
+  pastHorizon: z.boolean().optional(),
+  /** end only: DEBT added by this read */
+  debtDelta: z.number().int().optional(),
+  /** end only: a dropped socket releases the read */
+  endedBy: z.enum(["release", "disconnect"]).optional(),
+});
+export type ReadEvent = z.infer<typeof ReadEventSchema>;
+
+// ---------------------------------------------------------------------------
 // Unions
 
 export const ClientMessageSchema = z.discriminatedUnion("t", [
@@ -201,6 +275,8 @@ export const ClientMessageSchema = z.discriminatedUnion("t", [
   PingSchema,
   TapSchema,
   ActStartSchema,
+  ReadStartSchema,
+  ReadEndSchema,
 ]);
 export type ClientMessage = z.infer<typeof ClientMessageSchema>;
 
@@ -212,6 +288,8 @@ export const ServerMessageSchema = z.discriminatedUnion("t", [
   ActResultSchema,
   SnapshotSchema,
   StatsSchema,
+  BranchSetSchema,
+  ReadEventSchema,
 ]);
 export type ServerMessage = z.infer<typeof ServerMessageSchema>;
 

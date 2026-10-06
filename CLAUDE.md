@@ -36,6 +36,7 @@ pnpm --filter @lsp/web e2e     # Playwright smoke test of the diag page; starts 
 - Small commits, conventional messages (`feat(protocol): …`, `test(sim): …`).
 - When a done-criterion can't be met, write that in the task report with numbers. Don't quietly relax it.
 - Append `## Task N report` to `docs/handoff/SLICE_HANDOFF.md` when a task completes.
+- A visual component is not done until a rendered screenshot of it in its working state is part of the e2e run. Unit tests cannot see uniforms.
 
 ## What NOT to do
 See `docs/handoff/SLICE_HANDOFF.md` §8. In short: no scenes beyond Ep 1 S2/S5/S7, no save system, no client-side authority, no visual rendering of the counterfeit, no third-party code in motion/shaders.
