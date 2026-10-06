@@ -1,12 +1,18 @@
 import type { Role } from "@lsp/protocol";
 import { ROLES } from "@lsp/protocol";
 
+const CID_PATTERN = /^[A-Za-z0-9_-]{1,32}$/;
+
 /**
  * A stable per-device client id. Reconnects reuse it, so the server keeps the player's label,
  * stats and act participation across socket drops. Stored in localStorage; the whole page is
  * client-only so there is no SSR concern beyond guarding `window`.
+ *
+ * `override` (from `?cid=`) bypasses storage without touching it, so one browser can hold three
+ * tabs as three distinct players for a one-device demo. Invalid overrides fall back to storage.
  */
-export function getCid(): string {
+export function getCid(override?: string | null): string {
+  if (override && CID_PATTERN.test(override)) return override;
   const key = "lsp.cid";
   try {
     const existing = window.localStorage.getItem(key);
