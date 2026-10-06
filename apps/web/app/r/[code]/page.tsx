@@ -13,7 +13,8 @@ import { useRoomClient } from "@/lib/useRoomClient";
 /**
  * Room entry: pick a role, then see only that role's instrument (handoff §4 file map). Scenes
  * (Task 3) will route from here; for Task 2 the instruments stand alone. `?role=` preselects,
- * which the e2e test and a shared link both use.
+ * which the e2e test and a shared link both use; `?cid=` pins the client id so three tabs in one
+ * browser can be three players.
  */
 export default function RoomPage() {
   const params = useParams<{ code: string }>();
@@ -59,11 +60,11 @@ export default function RoomPage() {
       </main>
     );
   }
-  return <Instrument code={code} role={role} />;
+  return <Instrument code={code} role={role} cidOverride={search.get("cid")} />;
 }
 
-function Instrument({ code, role }: { code: string; role: Role }) {
-  const { snap, client } = useRoomClient(code, role);
+function Instrument({ code, role, cidOverride }: { code: string; role: Role; cidOverride: string | null }) {
+  const { snap, client } = useRoomClient(code, role, undefined, cidOverride);
   const header = (
     <div data-testid="conn" style={{ position: "fixed", top: 10, left: 16, right: 16, zIndex: 2, display: "flex", justifyContent: "space-between", fontSize: 12, color: "#7e818b", pointerEvents: "none" }}>
       <span>

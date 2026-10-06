@@ -5,11 +5,15 @@ import type { Role } from "@lsp/protocol";
 import { BeatClient, type BeatClientSnapshot } from "@/lib/beatClient";
 import { getCid, partyHost } from "@/lib/identity";
 
-/** One BeatClient per (room, role); reconnects when either changes. Snapshots refresh at ~20 Hz. */
+/**
+ * One BeatClient per (room, role, cid); reconnects when any changes. Snapshots refresh at ~20 Hz.
+ * `cidOverride` comes from `?cid=` and lets one browser be several players (see identity.ts).
+ */
 export function useRoomClient(
   code: string,
   role: Role,
   onBeat: (beatIndex: number) => void = () => {},
+  cidOverride: string | null = null,
 ): { snap: BeatClientSnapshot | null; client: RefObject<BeatClient | null>; cid: string } {
   const [cid, setCid] = useState("");
   const [snap, setSnap] = useState<BeatClientSnapshot | null>(null);
@@ -18,7 +22,7 @@ export function useRoomClient(
   const beatRef = useRef(onBeat);
   beatRef.current = onBeat;
 
-  useEffect(() => setCid(getCid()), []);
+  useEffect(() => setCid(getCid(cidOverride)), [cidOverride]);
 
   useEffect(() => {
     if (!cid) return;
