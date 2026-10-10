@@ -15,6 +15,7 @@ import {
   S7_AGAIN_MS,
   S7_DEMO_BEATS,
   S7_REPLY_DIM,
+  S7_REPLY_HOLD_MS,
   S7_TRUST_CLEAN,
   beatTime,
   descentTimeAt,
@@ -356,6 +357,11 @@ describe("scenes (Task 3)", () => {
     const evs = events(out);
     expect(evs.map((e) => e.kind)).toEqual(["lightsReply"]);
     expect(evs[0]?.amount).toBe(S7_REPLY_DIM);
+    // the reply holds on every screen before the end card
+    expect(core.state.scene.id).toBe("s7");
+    expect(core.state.scene.s7?.phase).toBe("reply");
+    expect(viewFor(out, "synaesthete")?.s7?.dim).toBe(S7_REPLY_DIM);
+    out = advanceTo(core, clock, clock.t + S7_REPLY_HOLD_MS + 1);
     expect(core.state.scene.id).toBe("end");
     expect(core.state.scene.ending).toBe("answered");
     expect(core.state.scene.consent).toBe("clean");
@@ -383,6 +389,9 @@ describe("scenes (Task 3)", () => {
     expect(core.state.scene.s7?.outcome).toBe("silent");
     expect(core.state.scene.trust).toBe(0);
     expect(core.state.scene.ending).toBe("answered");
+    expect(core.state.scene.s7?.phase).toBe("reply");
+    advanceTo(core, clock, clock.t + S7_REPLY_HOLD_MS + 1);
+    expect(core.state.scene.id).toBe("end");
   });
 
   it("S7: three missed beats close the window; 'again' once; a second failure is blackout", () => {
@@ -446,6 +455,8 @@ describe("scenes (Task 3)", () => {
     }
     expect(core.state.scene.consent).toBe("retried");
     expect(core.state.scene.ending).toBe("answered");
+    out = advanceTo(core, clock, clock.t + S7_REPLY_HOLD_MS + 1);
+    expect(core.state.scene.id).toBe("end");
     void out;
     // and the timeout path, on a fresh crew
     const fresh = crew();

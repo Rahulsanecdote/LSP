@@ -114,3 +114,5 @@ export const ACT_DEBT = 1;
 export const S7_TRUST_CLEAN = 3;
 /** how far the lights dim, and the Navigator's mind-shape brightens, on the reply (0..1) */
 export const S7_REPLY_DIM = 0.35;
+/** the reply (or the silence) holds on every screen this long before the end card; not paced */
+export const S7_REPLY_HOLD_MS = 6_000;

@@ -18,6 +18,7 @@ import {
   S7_DEMO_BEATS,
   S7_MAX_MISSES,
   S7_REPLY_DIM,
+  S7_REPLY_HOLD_MS,
   S7_TRUST_CLEAN,
   S7_WINDOWS,
   beatTime,
@@ -212,9 +213,12 @@ export class SceneHost {
         this.log("act", `Consent beat, window ${s7.window}: landed, with a condition. DEBT +1 all round. Silence.`);
         out.push(this.event({ kind: "silence", at: now }));
       }
-      s7.phase = "done";
+      // the reply holds on every screen (the lights dim, Chen's line) before the end card
+      s7.phase = "reply";
+      s7.replyUntil = now + S7_REPLY_HOLD_MS;
       s.ending = "answered";
-      out.push(...this.enterEnd());
+      this.core.touch();
+      out.push(...this.views());
       return out;
     }
     s7.windowsFailed += 1;
@@ -258,6 +262,7 @@ export class SceneHost {
     if (s.id === "s7" && s.s7) {
       if (s.s7.phase === "demo") c.push(s.s7.demoEndsAt);
       if (s.s7.phase === "between" && s.s7.againUntil !== null) c.push(s.s7.againUntil);
+      if (s.s7.phase === "reply" && s.s7.replyUntil !== null) c.push(s.s7.replyUntil);
     }
     return c.length ? Math.min(...c) : null;
   }
@@ -285,6 +290,10 @@ export class SceneHost {
         out.push(...this.views());
       } else if (s7.phase === "between" && s7.againUntil !== null && now >= s7.againUntil) {
         out.push(...this.blackout());
+      } else if (s7.phase === "reply" && s7.replyUntil !== null && now >= s7.replyUntil) {
+        s7.phase = "done";
+        s7.replyUntil = null;
+        out.push(...this.enterEnd());
       }
     }
     return out;
@@ -594,6 +603,7 @@ export class SceneHost {
       againUntil: null,
       outcome: null,
       windowsFailed: 0,
+      replyUntil: null,
     };
     this.log("system", "A deliberate collapse, electromagnetic signature, pulse—pause—pulse. It is teaching her to send.");
     return this.views();

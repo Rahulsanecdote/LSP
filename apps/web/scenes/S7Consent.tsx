@@ -39,7 +39,7 @@ export function S7Consent({ snap, client, role, scene }: { snap: BeatClientSnaps
       );
     case "synaesthete":
       return (
-        <SynaestheteOverlay snap={snap} ringY={0.68} floor={replied ? s7.dim : 0} tapColours={act || s7.phase === "between" ? tapColours : null} caption={phaseText}>
+        <SynaestheteOverlay snap={snap} ringY={0.68} floor={replied ? s7.dim : 0} tapColours={act || s7.phase === "between" || s7.phase === "reply" ? tapColours : null} caption={phaseText}>
           <div className="scene-ui" style={{ alignItems: "center" }}>
             <div className="card" style={{ alignSelf: "stretch" }}>{wave}</div>
             {replied && (
@@ -52,19 +52,21 @@ export function S7Consent({ snap, client, role, scene }: { snap: BeatClientSnaps
                 Again.
               </button>
             )}
-            <button
-              type="button"
-              className="bigtap"
-              data-testid="tap"
-              disabled={!act}
-              onPointerDown={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                client.current?.tap();
-              }}
-            >
-              TAP
-            </button>
+            {s7.phase !== "reply" && s7.phase !== "done" && (
+              <button
+                type="button"
+                className="bigtap"
+                data-testid="tap"
+                disabled={!act}
+                onPointerDown={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  client.current?.tap();
+                }}
+              >
+                TAP
+              </button>
+            )}
           </div>
         </SynaestheteOverlay>
       );

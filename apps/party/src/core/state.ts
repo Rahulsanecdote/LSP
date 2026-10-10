@@ -155,6 +155,8 @@ export interface S7State {
   againUntil: number | null;
   outcome: "clean" | "silent" | "failed" | null;
   windowsFailed: number;
+  /** the reply phase ends (and the end card begins) at this room time */
+  replyUntil: number | null;
 }
 
 export interface SceneState {
