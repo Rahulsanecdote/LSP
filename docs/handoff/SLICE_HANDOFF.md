@@ -674,3 +674,46 @@ Fixed earlier in the same run: the Synaesthete counted every player the room had
 - Audio: nobody reported the octave drop; one listener on each phone would close that row.
 - Whether a bare tap (0 ms) should cost DEBT, and whether a declined second read should be told so (notes 4 and 5).
 - Task 2b (differential-growth streams) is next once this report is accepted.
+
+## Task 2b report
+
+Written 2026-10-10. Status: **built; the Vitest half of the §6b done-criterion is met, the phone half (four streams at 60 fps on a phone) awaits one device run.** Open items under "For the design side".
+
+### What was built
+
+- `packages/motion/src/differential.ts`: the differential line, implemented from its published description. A line is a chain of nodes; each fixed step every free node moves by attraction toward its chain neighbours, repulsion from every other node inside a radius (chain neighbours excluded, linear falloff), and alignment toward its neighbours' midpoint; then a node is inserted at the midpoint of any edge longer than `maxEdge` and removed from any edge shorter than `minEdge`. Two nodes per line are not simulated: the head is pinned at the present, the tip is driven by the caller. Advancing the tip stretches the edge behind it and the insertion rule is what makes a stream grow node by node; retreating it trims the nodes it passes, so a released stream prunes back. Pure: a run is a function of (seed, call sequence); the only randomness is a seeded perpendicular jitter on insertion (`src/rng.ts`, splitmix32 from the published constants).
+- Two rules found on the way, both in the parameters: insertion jitter is capped at 15% of the edge it lands on, and inside a base zone (`baseRadius`, 0.08) around a line's head there is no jitter and no cross-line repulsion. Four streams share one head and are coincident there; before the zone was added the first inserted nodes were pushed sideways in arbitrary directions and lines crossed at step 3 of growth. The zone sits below the screen edge (the present is at uv y −0.08), so it is invisible.
+- `apps/web/components/instruments/Streams.tsx`: one field per (BranchSet, aspect), seeded by a hash of the BranchSet's content; the Task 2 growth spring (600 ms, staggered) drives each tip toward the same terminus the labels use; the field steps at 120 Hz from a time accumulator (clamped like the other instruments) and idles at zero cost when retracted. Each stream is a preallocated triangle-strip ribbon (`apps/web/lib/shaders/ribbon.ts`) rebuilt from its polyline every frame, carrying across-position, core width, tip fade and brightness, so the fragment reproduces Task 2's soft core, glow, taper and soft tip. The horizon black is its own fullscreen pass (`streams.ts`). The hold surface exposes `data-nodes` and `data-crossings` for the e2e run.
+
+### Done-criteria
+
+| Criterion | Status | Evidence |
+|---|---|---|
+| Seeded run reproducible under Vitest | met | `packages/motion/test/differential.test.ts`: same seed and step sequence → identical node arrays (exact); different seed → different shape |
+| S2 fixture's four streams grow without self-intersection | met in simulation; **phone run pending** | zero crossings after growth at phone (0.46) and desktop (1.78) aspect, and at every one of the first 90 steps of growth; e2e asserts `data-crossings` is 0 mid-hold with nodes inserted |
+| Grow over 600 ms (design doc §1) | met | the Task 2 growth spring is unchanged; nodes are inserted as the tip advances, not pre-placed |
+| Streams stay readable | met | chord deviation of every stream under 8% and above 0 (it wavers, it is not straight); tips land within 1e-3 of their targets; every edge within [minEdge/2, 1.5 maxEdge]; node count bounded by `maxNodesPerLine` |
+| Released stream retracts | met | 120 steps after release the field holds under a quarter of its grown nodes, each line keeping its two anchors |
+| 60 fps on a phone | **pending** | step cost on the dev box: 0.65 ms per step at seven fully grown streams (583 nodes), two steps per frame at 60 fps; S2's four streams are about a third of that. Device fps to be read off the Navigator's diag line during a hold |
+| Rendered screenshot in the e2e run | met | `navigator-holding.png` from `apps/web/e2e/read.spec.ts`; both specs green locally (flare event latency 7 ms, +2 charged on a 6.6 s hold) |
+| No third-party code in motion or shaders | met | written from the published description and the standard formulas |
+
+Tests: motion 27 (10 spring, 17 growth), protocol 44, party 27, sim 22; 2 e2e specs.
+
+### Parameters (`DEFAULT_GROWTH`, one place to push)
+
+| attraction | repulsion | alignment | repulsionRadius | maxEdge | minEdge | jitter | baseRadius | maxNodesPerLine |
+|---|---|---|---|---|---|---|---|---|
+| 18 /s | 1.2 /s | 30 /s | 0.03 | 0.02 | 0.007 | 0.004 (≤ 15% of the edge) | 0.08 | 96 |
+
+### Deviations and notes
+
+1. **Face culling.** The first ribbons rendered nothing: a strip's winding follows the stream's direction and the material culled it as a back face. The ribbon material is double-sided. Same family as the Task 2 uniform-cloning lesson: the e2e screenshot caught it, the unit tests could not.
+2. **Labels unchanged.** The simulated tip is driven to the point `labelPosition` already computes (clamped at 1.1 so a 660 s stream does not need 300 nodes), so labels and streams agree by construction and the PR 8 collision leveling stands.
+3. **Seed = BranchSet content.** A re-read of the same scene grows the same shape; a new BranchSet reseeds by itself.
+4. **S7 convergence** (streams pinching to one) is a change of tip targets through the same API; not built, Task 3.
+
+### For the design side
+
+- One device run: Navigator hold on the S26 Ultra and the iPhone, fps on the diag line, and whether the streams read as *growing* rather than appearing. That closes the last row.
+- The waver is set subtle (under 8% of chord). The parameter table is the knob.
