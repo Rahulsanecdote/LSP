@@ -4,6 +4,8 @@ export { BeatRoom };
 
 export interface Env {
   BEAT_ROOM: DurableObjectNamespace<BeatRoom>;
+  /** Task 3: divides the paced scene durations (descent, diagnostic, interlude); the e2e run sets it */
+  SCENE_PACE?: string;
 }
 
 /**

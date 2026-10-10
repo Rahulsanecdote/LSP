@@ -137,9 +137,12 @@ describe("Navigator read (Task 2)", () => {
 
   it("cannot steer: a read changes nothing but debt, activeRead and readLog", () => {
     const { clock, core } = crew();
+    // Task 3: the Ledger records every cost and per-human DEBT mirrors the counter; nothing
+    // about the scene's progression may move.
     const strip = (s: typeof core.state) => {
-      const { debt: _d, activeRead: _a, readLog: _r, nextReadId: _n, ...rest } = structuredClone(s);
-      return rest;
+      const { debt: _d, activeRead: _a, readLog: _r, nextReadId: _n, scene, ...rest } = structuredClone(s);
+      const { log: _l, debts: _db, ...sceneRest } = scene;
+      return { ...rest, scene: sceneRest };
     };
     const before = strip(core.state);
     const outs: Outbound[] = [];
@@ -150,9 +153,10 @@ describe("Navigator read (Task 2)", () => {
     clock.advance(9000);
     outs.push(...end(core));
     expect(strip(core.state)).toEqual(before);
-    // and the only thing anyone was told is that a read happened
-    expect(new Set(outs.map((o) => o.msg.t))).toEqual(new Set(["readEvent"]));
-    expect(outs.every((o) => o.to.kind === "room")).toBe(true);
+    // and the only thing the room was told is that a read happened (scene views go per
+    // connection and carry the Ledger line for the cost)
+    expect(new Set(outs.map((o) => o.msg.t))).toEqual(new Set(["readEvent", "scene"]));
+    expect(outs.filter((o) => o.msg.t === "readEvent").every((o) => o.to.kind === "room")).toBe(true);
     // no stream content leaked in the broadcasts
     expect(JSON.stringify(outs)).not.toContain("seal");
   });

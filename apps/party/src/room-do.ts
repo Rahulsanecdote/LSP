@@ -56,7 +56,8 @@ export class BeatRoom extends DurableObject<Env> {
         p.connId = null;
       }
     }
-    this.core = new RoomCore({ now: this.now }, state);
+    const pace = Number(this.env.SCENE_PACE ?? "1");
+    this.core = new RoomCore({ now: this.now, pace: Number.isFinite(pace) && pace >= 1 ? pace : 1 }, state);
   }
 
   private connIdOf(ws: WebSocket): string | null {
@@ -136,6 +137,9 @@ export class BeatRoom extends DurableObject<Env> {
       debt: s.debt,
       activeRead: s.activeRead,
       readLog: s.readLog.slice(-50),
+      // Task 3: where the episode is, per-human DEBT, the hidden trust (report only) and the Ledger
+      scene: { id: s.scene.id, enteredAt: s.scene.enteredAt, debts: s.scene.debts, trust: s.scene.trust, ending: s.scene.ending, consent: s.scene.consent, classification: s.scene.s5?.classification ?? null, log: s.scene.log.slice(-60) },
+      pace: this.core.pace,
     };
     return new Response(JSON.stringify(body), {
       headers: { "content-type": "application/json", "access-control-allow-origin": "*" },
