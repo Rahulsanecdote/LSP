@@ -1,4 +1,4 @@
-import type { ActState, BranchSet, Role, Schedule } from "@lsp/protocol";
+import type { ActState, BranchSet, LedgerEntry, Role, S5Classification, S5QuestionKind, Schedule, SceneId } from "@lsp/protocol";
 
 /**
  * Room state (SLICE_HANDOFF.md §5 "State"): one JSON-serialisable object, persisted by the host
@@ -91,6 +91,105 @@ export interface RoomState {
   nextReadId: number;
   /** what the Navigator sees on a hold; sent to the navigator's connection only */
   branchSet: BranchSet | null;
+  // ---- Task 3 ----
+  scene: SceneState;
+}
+
+// ---------------------------------------------------------------------------
+// Task 3 — scene state (§7). Server-owned; clients get per-role views of it.
+
+export interface S2State {
+  attempt: number;
+  startedAt: number;
+  pausedAt: number | null;
+  pausedTotal: number;
+  prompted: boolean;
+  /** reads released during this attempt */
+  reads: number;
+  line: string | null;
+  revealed: boolean | null;
+  synChoice: string | null;
+  tool: string | null;
+  diagnosticEndsAt: number | null;
+  fixed: boolean;
+  fixedAt: number | null;
+  failed: boolean;
+}
+
+export interface S5Trial {
+  index: number;
+  kind: "question" | "control";
+  startedAt: number;
+  endsAt: number;
+  question: string | null;
+  questionKind: S5QuestionKind | null;
+  /** set when the hold starts (commit = hold start + S5_COMMIT_HOLD_MS); cleared on cancel */
+  commitAt: number | null;
+  replyAt: number | null;
+  replySent: boolean;
+  committed: boolean;
+  synTapAt: number | null;
+  synDeltaMs: number | null;
+  conclusive: boolean | null;
+  navRead: boolean;
+  synFocused: boolean;
+  done: boolean;
+}
+
+export interface S5State {
+  started: boolean;
+  trials: S5Trial[];
+  current: number;
+  classification: S5Classification | null;
+  synFocusing: boolean;
+  synCharged: boolean;
+}
+
+export interface S7State {
+  phase: "demo" | "phrasing" | "act" | "between" | "reply" | "done";
+  demoStartBeat: number;
+  demoEndsAt: number;
+  phrasing: string | null;
+  window: number;
+  againUsed: boolean;
+  againUntil: number | null;
+  outcome: "clean" | "silent" | "failed" | null;
+  windowsFailed: number;
+  /** the reply phase ends (and the end card begins) at this room time */
+  replyUntil: number | null;
+}
+
+export interface SceneState {
+  id: SceneId;
+  enteredAt: number;
+  debts: Record<Role, number>;
+  /** hidden: the Ancient's TRUST; never sent to a client */
+  trust: number;
+  log: LedgerEntry[];
+  s2: S2State | null;
+  interludeIndex: number;
+  interludeUntil: number | null;
+  s5: S5State | null;
+  s7: S7State | null;
+  ending: "answered" | "unanswered" | null;
+  consent: "clean" | "retried" | "failed" | null;
+}
+
+export function initialSceneState(now: number): SceneState {
+  return {
+    id: "lobby",
+    enteredAt: now,
+    debts: { navigator: 0, synaesthete: 0, theorist: 0 },
+    trust: 0,
+    log: [],
+    s2: null,
+    interludeIndex: 0,
+    interludeUntil: null,
+    s5: null,
+    s7: null,
+    ending: null,
+    consent: null,
+  };
 }
 
 export function initialRoomState(): RoomState {
@@ -107,6 +206,7 @@ export function initialRoomState(): RoomState {
     readLog: [],
     nextReadId: 1,
     branchSet: null,
+    scene: initialSceneState(0),
   };
 }
 
@@ -117,5 +217,6 @@ export function migrateRoomState(state: RoomState): RoomState {
   state.readLog ??= [];
   state.nextReadId ??= 1;
   state.branchSet ??= null;
+  state.scene ??= initialSceneState(0);
   return state;
 }

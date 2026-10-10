@@ -1,5 +1,7 @@
 import { z } from "zod";
 import { ACT_BEATS_REQUIRED, BEAT_INTERVAL_MS, BEAT_WINDOW_MS, HORIZON_MS, PROJECTION_RATE_DEFAULT } from "./constants";
+import { RoleSchema } from "./role";
+import { CallAgainSchema, ChooseSchema, ContinueSchema, FocusSchema, SceneEventSchema, SceneViewSchema } from "./scene";
 
 /**
  * Wire protocol. Every message is zod-validated JSON over the PartyKit WebSocket.
@@ -10,9 +12,7 @@ import { ACT_BEATS_REQUIRED, BEAT_INTERVAL_MS, BEAT_WINDOW_MS, HORIZON_MS, PROJE
 const ms = z.number().finite();
 const id = z.string().min(1).max(64);
 
-export const RoleSchema = z.enum(["navigator", "synaesthete", "theorist"]);
-export type Role = z.infer<typeof RoleSchema>;
-export const ROLES: readonly Role[] = RoleSchema.options;
+export { ROLES, RoleSchema, type Role } from "./role";
 
 // ---------------------------------------------------------------------------
 // Clock sync — client-initiated, 4+ round trips, client keeps the median offset.
@@ -148,6 +148,8 @@ export const SnapshotSchema = z.object({
   /** Task 2: current DEBT and whether a read is in progress (who, since when) */
   debt: z.number().int().nonnegative(),
   activeRead: z.object({ readId: id, label: z.string().min(1), startedAt: ms }).nullable(),
+  /** Task 3: the scene, projected for the receiving role */
+  scene: z.lazy(() => SceneViewSchema).optional(),
 });
 export type Snapshot = z.infer<typeof SnapshotSchema>;
 
@@ -277,6 +279,10 @@ export const ClientMessageSchema = z.discriminatedUnion("t", [
   ActStartSchema,
   ReadStartSchema,
   ReadEndSchema,
+  ChooseSchema,
+  ContinueSchema,
+  FocusSchema,
+  CallAgainSchema,
 ]);
 export type ClientMessage = z.infer<typeof ClientMessageSchema>;
 
@@ -290,6 +296,8 @@ export const ServerMessageSchema = z.discriminatedUnion("t", [
   StatsSchema,
   BranchSetSchema,
   ReadEventSchema,
+  SceneViewSchema,
+  SceneEventSchema,
 ]);
 export type ServerMessage = z.infer<typeof ServerMessageSchema>;
 

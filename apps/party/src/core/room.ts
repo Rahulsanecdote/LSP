@@ -16,7 +16,11 @@ import {
   type ActStart,
   type BeatSpread,
   type BranchSet,
+  type CallAgain,
+  type Choose,
   type ClientMessage,
+  type Continue,
+  type Focus,
   type ClientStats,
   type Hello,
   type Ping,
@@ -30,6 +34,7 @@ import {
 } from "@lsp/protocol";
 import { issueSchedule, nextScheduleAt, scheduleDue } from "./beat";
 import { S2_SEAL_BRANCHSET } from "./fixtures";
+import { SceneHost, type SceneCore } from "./scenes";
 import { initialRoomState, migrateRoomState, type PlayerRecord, type ReadRecord, type RoomState, type TapRecord } from "./state";
 
 /**
@@ -65,10 +70,14 @@ export interface RoomCoreOptions {
   readLogCap?: number;
   /** the BranchSet a fresh room starts with (default: the S2 seal fixture) */
   branchSet?: BranchSet;
+  /** Task 3: paced scene durations are divided by this (SCENE_PACE); default 1 */
+  pace?: number;
 }
 
-export class RoomCore {
-  private readonly now: () => number;
+export class RoomCore implements SceneCore {
+  readonly now: () => number;
+  readonly pace: number;
+  private readonly scenes: SceneHost;
   private readonly tapLogCap: number;
   private readonly recentDeltaCap: number;
   private readonly rttCap: number;
@@ -85,6 +94,8 @@ export class RoomCore {
     this.rttCap = opts.rttCap ?? 24;
     this.recentBeatsCap = opts.recentBeatsCap ?? 20;
     this.readLogCap = opts.readLogCap ?? 200;
+    this.pace = Math.max(1, opts.pace ?? 1);
+    this.scenes = new SceneHost(this);
     this._state = migrateRoomState(state);
     if (this._state.branchSet === null) {
       this._state.branchSet = opts.branchSet ?? S2_SEAL_BRANCHSET;
@@ -110,8 +121,19 @@ export class RoomCore {
     return this._lastError;
   }
 
-  private touch(): void {
+  touch(): void {
     this._dirty = true;
+  }
+
+  connectedPlayers(): PlayerRecord[] {
+    return Object.values(this._state.players)
+      .filter((p) => p.connected)
+      .sort((a, b) => a.joinedAt - b.joinedAt);
+  }
+
+  /** The scene as the given role may see it (Task 3). */
+  sceneView(role: Role): ReturnType<SceneHost["view"]> {
+    return this.scenes.view(role);
   }
 
   // -------------------------------------------------------------------------
@@ -137,6 +159,7 @@ export class RoomCore {
     player.connId = null;
     this.touch();
     out.push(this.statsMessage());
+    out.push(...this.scenes.views());
     return out;
   }
 
@@ -162,6 +185,7 @@ export class RoomCore {
       out.push(...this.ensureSchedule({ kind: "room" }, true));
     }
     out.push(...this.closeDueBeats(now));
+    out.push(...this.scenes.tick(now));
     return out;
   }
 
@@ -174,6 +198,8 @@ export class RoomCore {
     if (act && this._state.schedule) {
       candidates.push(beatTime(this._state.schedule, act.nextToClose) + BEAT_CLOSE_GRACE_MS);
     }
+    const scene = this.scenes.nextWakeAt();
+    if (scene !== null) candidates.push(scene);
     return candidates.length ? Math.min(...candidates) : null;
   }
 
@@ -185,7 +211,7 @@ export class RoomCore {
    * right now (first-joined wins if a role is duplicated). Ignored while an act is active or
    * before any schedule exists.
    */
-  startAct(actId: string, roles: readonly Role[]): Outbound[] {
+  startAct(actId: string, roles: readonly Role[], maxMisses?: number): Outbound[] {
     const schedule = this._state.schedule;
     if (!schedule || this._state.activeAct) return [];
     const now = this.now();
@@ -197,7 +223,7 @@ export class RoomCore {
       .sort((a, b) => a.joinedAt - b.joinedAt)
       .filter((p, i, arr) => arr.findIndex((q) => q.role === p.role) === i)
       .map((p) => ({ cid: p.cid, role: p.role }));
-    this._state.activeAct = startAct({ actId, roles, startBeat, participants });
+    this._state.activeAct = startAct({ actId, roles, startBeat, participants, ...(maxMisses !== undefined ? { maxMisses } : {}) });
     this.touch();
     const msg: ActStart = { t: "actStart", actId, beatsRequired: ACT_BEATS_REQUIRED, roles: [...new Set(roles)] };
     return [{ to: { kind: "room" }, msg }];
@@ -265,6 +291,7 @@ export class RoomCore {
     if (this._state.readLog.length > this.readLogCap) this._state.readLog.splice(0, this._state.readLog.length - this.readLogCap);
     this._state.activeRead = null;
     this.touch();
+    const sceneOut = this.scenes.onReadEnded(player, record);
     const ev: ReadEvent = {
       t: "readEvent",
       readId: active.readId,
@@ -278,7 +305,7 @@ export class RoomCore {
       debtDelta,
       endedBy,
     };
-    return [{ to: { kind: "room" }, msg: ev }];
+    return [{ to: { kind: "room" }, msg: ev }, ...sceneOut];
   }
 
   // -------------------------------------------------------------------------
@@ -298,7 +325,22 @@ export class RoomCore {
         return this.onReadStart(connId, msg);
       case "readEnd":
         return this.onReadEnd(connId, msg);
+      case "choose":
+        return this.withPlayer(connId, msg, (p) => this.scenes.onChoose(p, msg));
+      case "continue":
+        return this.withPlayer(connId, msg, (p) => this.scenes.onContinue(p, msg));
+      case "focus":
+        return this.withPlayer(connId, msg, (p) => this.scenes.onFocus(p, msg));
+      case "callAgain":
+        return this.withPlayer(connId, msg, (p) => this.scenes.onCallAgain(p, msg));
     }
+  }
+
+  /** Scene intents count only from a connection that said hello with that cid. */
+  private withPlayer(connId: string, msg: Choose | Continue | Focus | CallAgain, f: (p: PlayerRecord) => Outbound[]): Outbound[] {
+    const player = this._state.players[msg.cid];
+    if (!player || player.connId !== connId) return [];
+    return f(player);
   }
 
   private onHello(connId: string, hello: Hello): Outbound[] {
@@ -337,6 +379,8 @@ export class RoomCore {
       out.push({ to: { kind: "conn", connId }, msg: this._state.branchSet });
     }
     out.push(this.statsMessage());
+    // presence is part of every scene view (lobby, reconnects)
+    out.push(...this.scenes.views());
     return out;
   }
 
@@ -437,6 +481,8 @@ export class RoomCore {
     }
     this.touch();
     out.push(this.statsMessage());
+    out.push(...this.scenes.onTap(player, { t: "tapScore", cid: tap.cid, beatIndex: score.beatIndex, deltaMs: score.deltaMs, hit: score.hit, auditDeltaMs }, tap.cServerEst));
+    if (act && this._state.scene.id === "s7") out.push(...this.scenes.views());
     return out;
   }
 
@@ -445,17 +491,23 @@ export class RoomCore {
     const schedule = this._state.schedule;
     let act = this._state.activeAct;
     if (!schedule || !act) return out;
+    let closedAny = false;
     while (act && now >= beatTime(schedule, act.nextToClose) + BEAT_CLOSE_GRACE_MS) {
       act = closeBeat(act, act.nextToClose);
       this._state.activeAct = act;
       this.touch();
+      closedAny = true;
       const status = evaluate(act);
       if (status !== "open") {
-        out.push({ to: { kind: "room" }, msg: actResult(act, status === "ok") });
+        const result = actResult(act, status === "ok");
+        out.push({ to: { kind: "room" }, msg: result });
         this._state.activeAct = null;
         act = null;
+        out.push(...this.scenes.onActResult(result));
+        closedAny = false;
       }
     }
+    if (closedAny && this._state.scene.id === "s7") out.push(...this.scenes.views());
     return out;
   }
 
@@ -493,6 +545,7 @@ export class RoomCore {
       activeAct: act ? { actId: act.actId, roles: [...act.roles], startBeat: act.startBeat, maxBeats: act.maxBeats } : null,
       debt: this._state.debt,
       activeRead: read ? { readId: read.readId, label: this._state.players[read.cid]?.label ?? "?", startedAt: read.startedAt } : null,
+      scene: this.scenes.view(you.role),
     };
   }
 

@@ -63,3 +63,56 @@ export const READ_DEBT_PAST_HORIZON = 2;
 
 /** Streams grow over this long on a hold. */
 export const STREAM_GROW_MS = 600;
+
+// ---------------------------------------------------------------------------
+// Task 3 — scenes S2, S5, S7 (SLICE_HANDOFF.md §7; content in docs/design/ep1-descent.md §2).
+// Durations marked "paced" are divided by the host's SCENE_PACE (a wrangler var the Playwright
+// run sets); nothing a client sends can change them.
+
+/**
+ * S2: the descent is three phases (all paced): fast to the reflex prompt depth, then a slow
+ * approach to where the seal would fail (the crew's window to read, speak and decide), then
+ * docking. The design doc's twelve-minute scene gives the approach about twenty seconds; the
+ * slice keeps that window at forty with the rest compressed.
+ */
+export const S2_DESCENT_MS = 120_000;
+export const S2_APPROACH_MS = 40_000;
+export const S2_DOCK_MS = 60_000;
+export const S2_DEPTH_M = 1500;
+/** the Navigator's reflex prompt depth */
+export const S2_PROMPT_DEPTH_M = 1380;
+/** where the seal fails if nobody acted */
+export const S2_FAIL_DEPTH_M = 1420;
+/** the Theorist's diagnostic: descent paused this long, then fixed (paced) */
+export const S2_DIAGNOSTIC_MS = 30_000;
+/** each interlude card (S3, S4 are not played) stays up this long (paced) */
+export const INTERLUDE_MS = 8_000;
+
+/** S5: a trial times out this long after it opens */
+export const S5_TRIAL_MS = 15_000;
+/** the Navigator commits by holding a question this long; the server knows the commit in advance */
+export const S5_COMMIT_HOLD_MS = 1_000;
+/** the console reply precedes the commit by this much, per trial (the 0.3 second) */
+export const S5_REPLY_LEAD_MS: readonly number[] = [300, 460, 300];
+/** control trial: the moment she would have decided, after the trial opens */
+export const S5_CONTROL_DECIDE_MS = 5_000;
+export const S5_TRIALS = 3;
+/** trials that must be conclusive for the Theorist to classify (else "noise") */
+export const S5_CONCLUSIVE_MIN = 2;
+
+/** S7: the Ancient's demonstration, in beats (pulse–pause–pulse, repeated) */
+export const S7_DEMO_BEATS = 9;
+/** a consent window closes on this many missed beats (design: "three misses") */
+export const S7_MAX_MISSES = 3;
+/** windows the crew gets: the first, then one "again" */
+export const S7_WINDOWS = 2;
+/** the Synaesthete has this long to call "again" after a failed window */
+export const S7_AGAIN_MS = 20_000;
+/** DEBT charged to every human when the act fires */
+export const ACT_DEBT = 1;
+/** TRUST on a clean beat with the clean phrasing */
+export const S7_TRUST_CLEAN = 3;
+/** how far the lights dim, and the Navigator's mind-shape brightens, on the reply (0..1) */
+export const S7_REPLY_DIM = 0.35;
+/** the reply (or the silence) holds on every screen this long before the end card; not paced */
+export const S7_REPLY_HOLD_MS = 6_000;

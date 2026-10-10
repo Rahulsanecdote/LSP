@@ -166,12 +166,15 @@ export function Streams({
   branchSet,
   holding,
   pastHorizon,
+  converge = 0,
   onGrow,
   onSim,
 }: {
   branchSet: BranchSet | null;
   holding: boolean;
   pastHorizon: boolean;
+  /** S7: 0 = the fan, 1 = every tip pulled onto one chord (the collapse); eased here */
+  converge?: number;
   onGrow?: (g: number[]) => void;
   onSim?: (r: SimReport) => void;
 }) {
@@ -186,6 +189,7 @@ export function Streams({
     return f;
   }, [branchSet, layout]);
   const targets = useMemo(() => layout.map(tipTarget), [layout]);
+  const convergeSpring = useRef(new Spring(0, 220));
   const acc = useRef(0);
   const frame = useRef(0);
 
@@ -229,6 +233,7 @@ export function Streams({
     const ms = Math.min(dt * 1000, MAX_STEP_MS);
     const g: number[] = [];
     let formed = 0;
+    const c = convergeSpring.current.to(Math.max(0, Math.min(1, converge)), ms);
     layout.forEach((_l, i) => {
       // streams grow in a slight stagger so the fan "forms" rather than pops
       const spring = grows.current[i] as Spring;
@@ -237,7 +242,8 @@ export function Streams({
       g.push(v);
       formed = Math.max(formed, v);
       const t = targets[i] as { x: number; y: number };
-      field.setTip(i, { x: t.x * v, y: t.y * v });
+      // the collapse: tips slide onto the straight-up chord, keeping their length
+      field.setTip(i, { x: t.x * v * (1 - c), y: t.y * v });
     });
     // the simulation runs at its fixed step; idle (fully retracted, not holding) costs nothing
     if (holding || formed > 1e-3) {

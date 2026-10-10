@@ -12,6 +12,9 @@ import {
   type ReadEvent,
   type Role,
   type Schedule,
+  type SceneEvent,
+  type SceneId,
+  type SceneView,
   type Stats,
   type TapScore,
 } from "@lsp/protocol";
@@ -59,6 +62,15 @@ export interface BeatClientSnapshot {
   holding: boolean;
   /** local time our hold began (performance.now()), or null */
   holdStartedLocal: number | null;
+  // ---- Task 3 ----
+  /** the scene as the server projects it for this role */
+  scene: SceneView | null;
+  /** timed scene events, newest last (capped), with the local time each arrived */
+  sceneEvents: { ev: SceneEvent; localAt: number }[];
+  /** the other players' recent scored taps (anonymous labels), newest last */
+  crewTaps: TapScore[];
+  /** how far the lights are dimmed after the S7 reply, 0..1 */
+  dim: number;
 }
 
 export interface BeatClientOptions {
@@ -97,6 +109,10 @@ export class BeatClient {
   private lastReadLatencyMs: number | null = null;
   private holding = false;
   private holdStartedLocal: number | null = null;
+  private scene: SceneView | null = null;
+  private sceneEvents: { ev: SceneEvent; localAt: number }[] = [];
+  private crewTaps: TapScore[] = [];
+  private dim = 0;
 
   constructor(opts: BeatClientOptions) {
     this.opts = opts;
@@ -139,7 +155,39 @@ export class BeatClient {
       lastReadLatencyMs: this.lastReadLatencyMs,
       holding: this.holding,
       holdStartedLocal: this.holdStartedLocal,
+      scene: this.scene,
+      sceneEvents: this.sceneEvents,
+      crewTaps: this.crewTaps,
+      dim: this.dim,
     };
+  }
+
+  /** Room time → local time, or null until the estimator is ready. */
+  toLocal(roomMs: number): number | null {
+    return this.estimator.ready ? this.estimator.toLocal(roomMs) : null;
+  }
+
+  /** Current room-time estimate, or null until the estimator is ready. */
+  roomNow(): number | null {
+    return this.estimator.ready ? this.estimator.toServer(this.now()) : null;
+  }
+
+  // ---- Task 3 intents: every one is a request; the server decides ----
+
+  choose(sceneId: SceneId, promptId: string, optionId: string, phase?: "start" | "cancel"): void {
+    this.send({ t: "choose", cid: this.opts.cid, sceneId, promptId, optionId, ...(phase ? { phase } : {}) });
+  }
+
+  continue(sceneId: SceneId): void {
+    this.send({ t: "continue", cid: this.opts.cid, sceneId });
+  }
+
+  focus(on: boolean): void {
+    this.send({ t: "focus", cid: this.opts.cid, on });
+  }
+
+  callAgain(): void {
+    this.send({ t: "callAgain", cid: this.opts.cid });
   }
 
   /** Navigator: the hand went down. Sends readStart with the current room-time estimate. */
@@ -263,7 +311,15 @@ export class BeatClient {
         if (msg.schedule) this.schedule = msg.schedule;
         this.debt = msg.debt;
         this.activeRead = msg.activeRead;
+        if (msg.scene) this.scene = msg.scene;
         this.ensureBeatLoop();
+        break;
+      case "scene":
+        this.scene = msg;
+        break;
+      case "sceneEvent":
+        this.sceneEvents = [...this.sceneEvents, { ev: msg, localAt: this.now() }].slice(-20);
+        if (msg.kind === "lightsReply") this.dim = Math.max(this.dim, msg.amount ?? 0);
         break;
       case "branchSet":
         this.branchSet = msg;
@@ -288,6 +344,8 @@ export class BeatClient {
           this.taps++;
           if (msg.hit) this.hits++;
           this.recent = [...this.recent, msg].slice(-10);
+        } else {
+          this.crewTaps = [...this.crewTaps, msg].slice(-12);
         }
         break;
       case "stats":

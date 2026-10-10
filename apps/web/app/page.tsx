@@ -10,7 +10,7 @@ function randomCode(): string {
   return out;
 }
 
-/** Task 1 shell: create or join a room, then go to its beat diagnostic. Scenes come in Task 3. */
+/** The shell: create or join a room by code, then pick a role. The beat diagnostic is linked from the room page. */
 export default function Home() {
   const router = useRouter();
   const [code, setCode] = useState("");
@@ -18,13 +18,13 @@ export default function Home() {
   function join(e: FormEvent) {
     e.preventDefault();
     const c = code.trim().toUpperCase();
-    if (c) router.push(`/diag/${encodeURIComponent(c)}`);
+    if (c) router.push(`/r/${encodeURIComponent(c)}`);
   }
 
   return (
     <main>
       <h1>Last Stand Protocol</h1>
-      <p className="sub">Task 1 — beat engine diagnostic. Every phone in a crew opens the same room code.</p>
+      <p className="sub">Episode 1 — Descent. Every phone in a crew opens the same room code and takes a seat.</p>
       <form className="row" onSubmit={join}>
         <input
           aria-label="Room code"
