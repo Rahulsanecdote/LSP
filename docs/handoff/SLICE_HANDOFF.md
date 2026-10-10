@@ -619,3 +619,58 @@ spread: 60 beats measured from beat 6, 3 clients, human sd 40 ms, seed 1, 38.4 s
 
 
 
+
+## Task 2 report
+
+Written 2026-10-10 after a three-device run on the deployed Worker and web app. Status: **§6 done-criteria met on real devices; two phone-only visual defects found in the run are fixed and covered by the e2e assertion (PR 8); awaiting acceptance.** Open items are listed under "For the design side".
+
+### Done-criteria
+
+| Criterion (§6 and the 2026-10-05 build notes) | Status | Evidence |
+|---|---|---|
+| Hold-to-read is server-mediated: `readStart`/`readEnd`, server assigns DEBT, `readEvent` to the room | met | `apps/party/test/room.test.ts` (navigator-only, one read at a time, disconnect ends a read); 109 reads on the live room, 0 rule violations across the 50 the log keeps |
+| +1 per read, +2 past the 90 s horizon; horizon strict (`projected > 90000`) | met | live reads r102 (13 274 ms → 199.1 s, +2) and r109 (8 255 ms → 123.8 s, +2) vs r96 (5 766 ms → 86.5 s, +1); unit tests at the boundary |
+| Streams from a server-supplied BranchSet; Synaesthete never receives stream content | met | `hello` sends `branchSet` to navigator connections only; e2e asserts the Synaesthete page has `data-branchset="0"` and no "seal" in its text |
+| Horizon: clip to black, field darkens, drone drops an octave, read flagged | met on screen; **audio not verified on device** | both phone screenshots show the clipped safe stream, the dashed horizon, the "beyond the horizon — release costs double" flag and the desaturated field; no tester reported the octave drop either way |
+| Synaesthete flare on `readEvent` with spring-damped decay, within 200 ms | met | iPhone Synaesthete: `evt 78 ms` with the flare at 0.55 while the S26 held; S26 Synaesthete `evt 26 ms`; Theorist `evt 50 ms` on 5G; loopback e2e 6–12 ms |
+| Theorist's DEBT increments, server-mediated | met | iPhone Theorist showed DEBT 88 / "last read 0.2 s, +1" for the same read (r81, 231 ms) the Navigator and the server logged |
+| Shaders from the math: tileable 3D noise, Gray-Scott | met | `apps/web/lib/shaders/{noise3d,streams,grayScott}.ts`, no third-party code; Gray-Scott on a fixed 256² half-float target on every device tested (`sim 256² half` on iOS Safari, Chrome Android and desktop) |
+| 60 fps on iPhone 16 Pro Max and Galaxy S26 Ultra while holding | met | S26 Ultra Navigator **120 fps** during a 13.3 s hold; iPhone Navigator **60 fps** during an 8.3 s hold (Safari caps `requestAnimationFrame` at 60 Hz by default, so 60 is the ceiling there); iPhone Synaesthete 60 fps with the flare live |
+| A rendered screenshot of the component in its working state is part of the e2e run | met | `navigator-holding.png`, `synaesthete-flare.png`, plus the at-rest trio, written by `apps/web/e2e/read.spec.ts` on every run |
+| typecheck, lint, unit, e2e, CI green | met | 103 unit tests (motion 10, protocol 44, party 27, sim 22); 2 e2e specs; CI check + e2e jobs green on every Task 2 PR |
+
+### Real-device run (2026-10-10, room DEMO, Worker version 2d1d52da, web on Vercel main)
+
+| Device | Browser · link | Role | fps | Event latency | Hold → verdict |
+|---|---|---|---|---|---|
+| Galaxy S26 Ultra | Chrome · Wi-Fi | Navigator | 120 (holding) | 51 ms | 13 274 ms → 199.1 s, +2 (r102) |
+| iPhone (5G) | Safari · cellular | Navigator | 60 (holding) | 69 ms | 8 255 ms → 123.8 s, +2 (r109) |
+| iPhone (Wi-Fi) | Safari · Wi-Fi | Synaesthete | 60 (flare 0.55) | 78 ms | — |
+| Galaxy S26 Ultra | Chrome · Wi-Fi | Synaesthete | 120 (at rest) | 26 ms | — |
+| iPhone (5G) | Safari · cellular | Theorist | — | 50 ms | showed +1 for r81 |
+| MacBook | Comet (Chromium) · Wi-Fi | Navigator | 60 | 25 ms | r32–r101, all +1; r90 24.9 s, +2 |
+
+Two iPhones took part; which one is the 16 Pro Max named in the criterion is to be confirmed by the tester (both run iOS Safari; the fps ceiling is the same). "Event latency" is the client's `readEvent` round trip as shown on its diag line. Every entry in the 50-read server log satisfied projected = held × 15, past-horizon iff projected > 90 000, and debt delta 2 iff past-horizon.
+
+Defects seen in the run, both fixed in PR 8 with an e2e assertion that reproduces them at Pixel 7 viewport:
+- **Labels overprinted on phones.** The narrow fan put the safe stream's three-line horizon label under the first failure label. Labels are now placed in screen space; a label that would collide with a placed neighbour takes the lowest free level (46 px steps), so four streams alternate on two levels. The e2e test asserts no two shown label boxes intersect, and failed before the fix with exactly the phone's pair.
+- **iOS long-press loupe** on the hold surface. The surface now carries the WebKit no-select and no-callout styles and cancels the context menu.
+
+Fixed earlier in the same run: the Synaesthete counted every player the room had ever seen ("4 in the crew" with three live), now connected players only (PR 6).
+
+### Deviations and notes
+
+1. **ShaderMaterial uniforms.** R3F's declarative `<shaderMaterial uniforms={…}>` clones the uniform objects on construction, so later mutation of the originals never reached the GPU and the streams and frost rendered black. Materials are built once by hand and attached with `<primitive attach="material">`; code mutates `material.uniforms`. Standing rule, recorded in CLAUDE.md.
+2. **S2 fixture terminus** corrected from 91 000 to 89 000 ms (amendment 7).
+3. **The Synaesthete's flare under the e2e software renderer** (2–14 fps) appears 270–1 100 ms after pointerdown including 100 ms polling, while the event itself arrives in 6–12 ms; the 200 ms criterion is therefore read from the event latency and verified on real devices (26–78 ms), not from the software renderer.
+4. **A second Navigator holds locally.** With two navigator connections in one room (a test condition only; play has one), the server ignores the second `readStart` while a read is active, but that client still renders its own hold and charges nothing on release. Harmless in play; a `readDeclined` message would make it honest. Not added without a design decision.
+5. **A 0 ms read costs 1.** r103 had pointerdown and pointerup in the same server millisecond and was charged +1, as "every hold costs one" says. Whether a bare tap should count is a design question.
+6. **`?cid=` override** (PR 5) lets one browser hold three tabs as three players for the launcher's one-device mode; storage is untouched when it is present.
+7. **Room summary** (PR 7) now carries `debt`, `activeRead` and the last 50 reads so a device run can be read off the Worker after the fact; it is how the numbers above were taken.
+
+### For the design side
+
+- Confirm which iPhone was the 16 Pro Max (both iPhones met 60 fps).
+- Audio: nobody reported the octave drop; one listener on each phone would close that row.
+- Whether a bare tap (0 ms) should cost DEBT, and whether a declined second read should be told so (notes 4 and 5).
+- Task 2b (differential-growth streams) is next once this report is accepted.
