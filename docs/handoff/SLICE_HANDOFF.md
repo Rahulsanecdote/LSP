@@ -677,7 +677,7 @@ Fixed earlier in the same run: the Synaesthete counted every player the room had
 
 ## Task 2b report
 
-Written 2026-10-10. Status: **built; the Vitest half of the §6b done-criterion is met, the phone half (four streams at 60 fps on a phone) awaits one device run.** Open items under "For the design side".
+Written 2026-10-10. Status: **built; Vitest criterion met; 120 fps on the Galaxy S26 Ultra during a hold of the S2 fixture (the iPhone row was not run).** **Accepted and closed by Rimuru, 2026-10-10.** Open items under "For the design side".
 
 ### What was built
 
