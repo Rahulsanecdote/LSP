@@ -2,7 +2,7 @@
 
 import { Canvas } from "@react-three/fiber";
 import { HORIZON_MS } from "@lsp/protocol";
-import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type RefObject } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from "react";
 import type { BeatClient, BeatClientSnapshot } from "@/lib/beatClient";
 import { HorizonDrone } from "@/lib/audio";
 import { useFps } from "@/lib/useFps";
@@ -23,7 +23,22 @@ import { GlCanvasBoundary } from "./GlCanvasBoundary";
  * local preview from the same projectionRate the server uses; the server's verdict arrives in
  * the end readEvent.
  */
-export function NavigatorRead({ snap, client }: { snap: BeatClientSnapshot | null; client: RefObject<BeatClient | null> }) {
+export interface NavigatorReadProps {
+  snap: BeatClientSnapshot | null;
+  client: RefObject<BeatClient | null>;
+  /** "read": press and hold reads (Task 2). "tap": a press is a consent tap and the field stays formed (S7). */
+  mode?: "read" | "tap";
+  /** S7: 0..1, how far the streams have pinched to one */
+  converge?: number;
+  /** the line above the diag line; defaults to the instrument's own prompt */
+  prompt?: string | null;
+  /** S2 after the fix: the viewport doubles for a moment */
+  doubled?: boolean;
+  /** scene UI drawn over the instrument (wheels, comms); gets pointer events */
+  children?: ReactNode;
+}
+
+export function NavigatorRead({ snap, client, mode = "read", converge = 0, prompt, doubled = false, children }: NavigatorReadProps) {
   const fps = useFps();
   const drone = useRef<HorizonDrone | null>(null);
   const [now, setNow] = useState(() => performance.now());
@@ -59,8 +74,9 @@ export function NavigatorRead({ snap, client }: { snap: BeatClientSnapshot | nul
   useEffect(() => () => drone.current?.dispose(), []);
 
   const branchSet = snap?.branchSet ?? null;
-  const holding = snap?.holding ?? false;
-  const heldMs = holding && snap?.holdStartedLocal !== null && snap?.holdStartedLocal !== undefined ? Math.max(0, now - snap.holdStartedLocal) : 0;
+  const tapMode = mode === "tap";
+  const holding = (snap?.holding ?? false) || tapMode;
+  const heldMs = !tapMode && holding && snap?.holdStartedLocal !== null && snap?.holdStartedLocal !== undefined ? Math.max(0, now - snap.holdStartedLocal) : 0;
   const rate = branchSet?.projectionRate ?? 15;
   const projectedMs = heldMs * rate;
   const pastHorizon = holding && projectedMs > (branchSet?.horizonMs ?? HORIZON_MS);
@@ -89,21 +105,28 @@ export function NavigatorRead({ snap, client }: { snap: BeatClientSnapshot | nul
 
   const down = useCallback(
     (e: ReactPointerEvent) => {
+      if (e.target !== e.currentTarget && (e.target as HTMLElement).closest?.("[data-scene-ui]")) return; // a wheel, not the field
       e.preventDefault();
       (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
       const c = client.current;
-      if (!c || !c.readStart()) return;
+      if (!c) return;
+      if (tapMode) {
+        c.tap();
+        return;
+      }
+      if (!c.readStart()) return;
       drone.current ??= new HorizonDrone();
       drone.current.start();
     },
-    [client],
+    [client, tapMode],
   );
   const up = useCallback(
     (e: ReactPointerEvent) => {
+      if (tapMode) return;
       e.preventDefault();
       if (client.current?.readEnd()) drone.current?.stop();
     },
-    [client],
+    [client, tapMode],
   );
 
   const ready = Boolean(snap?.connected && snap.offset !== null && branchSet);
@@ -122,17 +145,21 @@ export function NavigatorRead({ snap, client }: { snap: BeatClientSnapshot | nul
       onPointerCancel={up}
       onLostPointerCapture={up}
       onContextMenu={(e) => e.preventDefault()}
+      data-mode={mode}
       style={{ position: "fixed", inset: 0, touchAction: "none", userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none", background: "#0e0f12", cursor: ready ? "pointer" : "wait" }}
     >
       <GlCanvasBoundary>
-        <Canvas dpr={[1, 2]} gl={{ antialias: false, powerPreference: "high-performance" }} frameloop="always" style={{ position: "absolute", inset: 0 }}>
+        <Canvas dpr={[1, 2]} gl={{ antialias: false, powerPreference: "high-performance" }} frameloop="always" style={{ position: "absolute", inset: 0, filter: doubled ? "none" : undefined, transition: "opacity 300ms" }}>
           <Frost holding={holding} pastHorizon={pastHorizon} />
-          <Streams branchSet={branchSet} holding={holding} pastHorizon={pastHorizon} onGrow={(g) => (growRef.current = g)} onSim={(r) => (simRef.current = r)} />
+          <Streams branchSet={branchSet} holding={holding} pastHorizon={pastHorizon} converge={converge} onGrow={(g) => (growRef.current = g)} onSim={(r) => (simRef.current = r)} />
         </Canvas>
       </GlCanvasBoundary>
+      {/* S2 horror beat: the pressure behind her eyes, the viewport doubling for a moment */}
+      {doubled && <div aria-hidden data-testid="doubled" style={{ position: "absolute", inset: 0, pointerEvents: "none", background: "rgba(214,226,240,0.10)", transform: "translate(6px, -3px)", mixBlendMode: "screen", animation: "lsp-double 900ms ease-out forwards" }} />}
 
       {/* stream labels: plain DOM, the Rive slot (amendment 6c) */}
       {holding &&
+        !tapMode &&
         layout.map((l, i) => {
           const pos = labelPosition(l, aspect);
           const s = branchSet?.streams[i];
@@ -169,9 +196,16 @@ export function NavigatorRead({ snap, client }: { snap: BeatClientSnapshot | nul
       {/* horizon marker, with the field */}
       <div aria-hidden style={{ position: "absolute", left: 0, right: 0, bottom: `${HORIZON_Y * 100}%`, borderTop: "1px dashed rgba(242,242,240,.18)", pointerEvents: "none", opacity: holding ? 1 : 0, transition: "opacity 300ms" }} />
 
+      {/* scene UI (Task 3): wheels and comms, above the field, below the diag line */}
+      {children && (
+        <div data-scene-ui style={{ position: "absolute", left: 0, right: 0, bottom: 64, top: 48, pointerEvents: "none", display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
+          {children}
+        </div>
+      )}
+
       {/* prompt and diag line */}
       <div style={{ position: "absolute", left: 16, right: 16, bottom: 14, pointerEvents: "none", fontSize: 12, color: "#b7b9c0", display: "flex", flexDirection: "column", gap: 4 }}>
-        <span>{!ready ? "connecting…" : holding ? (pastHorizon ? "beyond the horizon — release costs double" : "reading") : "press and hold anywhere to read"}</span>
+        <span data-testid="prompt">{prompt !== undefined && prompt !== null ? prompt : !ready ? "connecting…" : holding ? (pastHorizon ? "beyond the horizon — release costs double" : "reading") : "press and hold anywhere to read"}</span>
         <span data-testid="diag" style={{ fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: "#7e818b" }}>
           {fps} fps · hold {Math.round(heldMs)} ms → {(projectedMs / 1000).toFixed(1)} s · DEBT {snap?.debt ?? 0}
           {last?.phase === "end" ? ` · last ${last.durationMs?.toFixed(0)} ms ${last.pastHorizon ? "+2" : "+1"}` : ""}

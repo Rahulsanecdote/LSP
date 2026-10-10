@@ -2,7 +2,7 @@
 
 import { Canvas } from "@react-three/fiber";
 import { Spring } from "@lsp/motion";
-import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from "react";
 import type { BeatClientSnapshot } from "@/lib/beatClient";
 import { useFps } from "@/lib/useFps";
 import { GlCanvasBoundary } from "./GlCanvasBoundary";
@@ -26,8 +26,30 @@ const TINTS: [number, number, number][] = [
  * The flare spring runs in a DOM-level rAF loop, not inside the GL frame, so the flare value
  * (and the test that reads it) exists even where WebGL does not.
  */
-export function SynaestheteOverlay({ snap }: { snap: BeatClientSnapshot | null }) {
+export interface SynaestheteOverlayProps {
+  snap: BeatClientSnapshot | null;
+  /** the Navigator's blob never falls below this (S2 after the fix: "not fully fading"; S7: the reply) */
+  floor?: number;
+  /** S5: local time at which her mind commits; the blob builds toward it over the commit hold */
+  commitAtLocal?: number | null;
+  /** S5: press-and-hold on the field is overlay focus */
+  onFocus?: (on: boolean) => void;
+  /** S7: the last beat's taps by role; one colour if all hit, one per role if not */
+  tapColours?: { role: string; hit: boolean }[] | null;
+  /** the line at bottom left; defaults to the crew count / who is reading */
+  caption?: string | null;
+  /** uv y of the blob ring's centre (0 bottom, 1 top); scenes with controls at the bottom raise it */
+  ringY?: number;
+  children?: ReactNode;
+}
+
+export function SynaestheteOverlay({ snap, floor = 0, commitAtLocal = null, onFocus, tapColours = null, caption, ringY = 0.5, children }: SynaestheteOverlayProps) {
   const fps = useFps();
+  const [focusing, setFocusing] = useState(false);
+  const commitRef = useRef<number | null>(null);
+  commitRef.current = commitAtLocal;
+  const floorRef = useRef(0);
+  floorRef.current = floor;
   const clients = useMemo(() => (snap?.stats?.clients ?? []).filter((c) => c.connected).sort((a, b) => a.label.localeCompare(b.label)).slice(0, MAX_BLOBS), [snap?.stats]);
   const blobs: Blob[] = useMemo(
     () =>
@@ -35,9 +57,9 @@ export function SynaestheteOverlay({ snap }: { snap: BeatClientSnapshot | null }
         const n = Math.max(clients.length, 1);
         const a = (i / n) * Math.PI * 2 - Math.PI / 2;
         const r = n === 1 ? 0 : 0.17; // inside the visible slice of the square sim on a tall phone
-        return { x: 0.5 + r * Math.cos(a), y: 0.5 + r * Math.sin(a) * 1.4, tint: TINTS[i % TINTS.length] as [number, number, number] };
+        return { x: 0.5 + r * Math.cos(a), y: ringY + r * Math.sin(a) * 1.4, tint: TINTS[i % TINTS.length] as [number, number, number] };
       }),
-    [clients],
+    [clients, ringY],
   );
   const navIndex = clients.findIndex((c) => c.role === "navigator");
 
@@ -65,10 +87,20 @@ export function SynaestheteOverlay({ snap }: { snap: BeatClientSnapshot | null }
     const loop = (t: number) => {
       const dt = Math.min(t - last, 100);
       last = t;
+      // S5: the mind-shape builds toward the commit over the hold, peaks, then lets go
+      let ramp = 0;
+      const commitAt = commitRef.current;
+      if (commitAt !== null) {
+        const until = commitAt - t;
+        if (until > 0 && until < 1000) ramp = 0.9 * (1 - until / 1000);
+        else if (until <= 0 && until > -400) ramp = 0.9;
+      }
       for (let i = 0; i < MAX_BLOBS; i++) {
         const isReader = i === navIndex && reading;
-        // while the read is held the blob stays lit; on release it decays to dark
-        flaresRef.current[i] = (springs.current[i] as Spring).to(isReader ? 0.55 : 0, dt);
+        const isNav = i === navIndex;
+        // while the read is held the blob stays lit; on release it decays to dark, or to the floor
+        const target = Math.max(isReader ? 0.55 : 0, isNav ? floorRef.current : 0, isNav ? ramp : 0);
+        flaresRef.current[i] = (springs.current[i] as Spring).to(target, dt);
       }
       if (t - lastPublish > 100) {
         setFlareShown(navIndex >= 0 ? (flaresRef.current[navIndex] ?? 0) : 0);
@@ -81,14 +113,46 @@ export function SynaestheteOverlay({ snap }: { snap: BeatClientSnapshot | null }
   }, [navIndex, reading]);
 
   const ready = Boolean(snap?.connected && snap.offset !== null);
+  const focusDown = (e: ReactPointerEvent) => {
+    if (!onFocus) return;
+    if ((e.target as HTMLElement).closest?.("[data-scene-ui]")) return;
+    e.preventDefault();
+    setFocusing(true);
+    onFocus(true);
+  };
+  const focusUp = () => {
+    if (!onFocus || !focusing) return;
+    setFocusing(false);
+    onFocus(false);
+  };
+  const allHit = tapColours && tapColours.length > 0 && tapColours.every((t) => t.hit);
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: "#0a0b0e", touchAction: "none", userSelect: "none" }}>
+    <div
+      onPointerDown={focusDown}
+      onPointerUp={focusUp}
+      onPointerCancel={focusUp}
+      data-focus={focusing ? "1" : "0"}
+      style={{ position: "fixed", inset: 0, background: "#0a0b0e", touchAction: "none", userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none", outline: focusing ? "2px solid rgba(242,242,240,0.35)" : "none", outlineOffset: -2 }}
+    >
       <GlCanvasBoundary>
         <Canvas dpr={[1, 2]} gl={{ antialias: false, powerPreference: "high-performance" }} style={{ position: "absolute", inset: 0 }}>
           <FlareBridge flaresRef={flaresRef} blobs={blobs} onStatus={setSim} />
         </Canvas>
       </GlCanvasBoundary>
+      {/* S7: the colour of the crew's taps. In rhythm, one colour; out of rhythm, three. */}
+      {tapColours && tapColours.length > 0 && (
+        <div data-testid="tap-colours" data-in-rhythm={allHit ? "1" : "0"} style={{ position: "absolute", top: 56, left: 0, right: 0, display: "flex", justifyContent: "center", gap: 10, pointerEvents: "none" }}>
+          {tapColours.map((t, i) => (
+            <span key={i} style={{ width: 14, height: 14, borderRadius: 7, background: allHit ? "#f2f2f0" : t.hit ? ROLE_COLOURS[t.role] ?? "#888" : "#3a3d46", opacity: 0.9 }} />
+          ))}
+        </div>
+      )}
+      {children && (
+        <div data-scene-ui style={{ position: "absolute", left: 0, right: 0, bottom: 64, top: 48, pointerEvents: "none", display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
+          {children}
+        </div>
+      )}
       <div
         data-testid="flare"
         data-flare={flareShown.toFixed(3)}
@@ -98,7 +162,7 @@ export function SynaestheteOverlay({ snap }: { snap: BeatClientSnapshot | null }
         data-sim={sim ? `${sim.type}:${sim.complete ? "ok" : "incomplete"}` : ""}
         style={{ position: "absolute", left: 16, right: 16, bottom: 14, pointerEvents: "none", fontSize: 12, color: "#b7b9c0", display: "flex", justifyContent: "space-between", gap: 12 }}
       >
-        <span>{!ready ? "connecting…" : reading ? `${snap?.activeRead?.label ?? "someone"} is reading` : `${clients.length} in the crew`}</span>
+        <span data-testid="caption">{caption !== undefined && caption !== null ? caption : !ready ? "connecting…" : reading ? `${snap?.activeRead?.label ?? "someone"} is reading` : `${clients.length} in the crew`}</span>
         <span data-testid="diag" style={{ fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>
           {fps} fps · flare {flareShown.toFixed(2)}
           {sim ? ` · sim ${SIM_SIZE}² ${sim.type}${sim.complete ? "" : " (incomplete)"}` : ""}
@@ -108,6 +172,8 @@ export function SynaestheteOverlay({ snap }: { snap: BeatClientSnapshot | null }
     </div>
   );
 }
+
+const ROLE_COLOURS: Record<string, string> = { navigator: "#6fa8ff", synaesthete: "#c98de0", theorist: "#e39a55" };
 
 /** Reads the DOM-side flare values into the GL component every frame. */
 function FlareBridge({ flaresRef, blobs, onStatus }: { flaresRef: RefObject<number[]>; blobs: Blob[]; onStatus: (s: SimStatus) => void }) {

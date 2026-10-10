@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import type { BeatClientSnapshot } from "@/lib/beatClient";
 
 /**
@@ -7,12 +8,13 @@ import type { BeatClientSnapshot } from "@/lib/beatClient";
  * only; Ledger editing is out of scope (§8). Plain DOM: this is the Rive slot (amendment 6c);
  * swap the counter for a Rive gauge when a .riv exists.
  */
-export function TheoristLedger({ snap }: { snap: BeatClientSnapshot | null }) {
+export function TheoristLedger({ snap, children }: { snap: BeatClientSnapshot | null; children?: ReactNode }) {
   const reading = snap?.activeRead ?? null;
   const last = snap?.lastReadEvent ?? null;
   const ready = Boolean(snap?.connected && snap.offset !== null);
   return (
     <main style={{ minHeight: "100dvh", display: "flex", flexDirection: "column", justifyContent: "center", gap: 18 }}>
+      {children && <div className="scene-ui" style={{ margin: 0 }}>{children}</div>}
       <div className="kv" style={{ textAlign: "center", padding: "28px 16px" }}>
         <div className="k">DEBT</div>
         <div className="v" data-testid="debt" style={{ fontSize: 72, lineHeight: 1 }}>
