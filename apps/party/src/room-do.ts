@@ -132,6 +132,10 @@ export class BeatRoom extends DurableObject<Env> {
       activeAct: s.activeAct ? { actId: s.activeAct.actId, startBeat: s.activeAct.startBeat } : null,
       recentBeats: this.core.recentBeats(),
       tapLog: s.tapLog,
+      // Task 2: the Navigator's reads, so a device check can be read off the room after the fact.
+      debt: s.debt,
+      activeRead: s.activeRead,
+      readLog: s.readLog.slice(-50),
     };
     return new Response(JSON.stringify(body), {
       headers: { "content-type": "application/json", "access-control-allow-origin": "*" },
