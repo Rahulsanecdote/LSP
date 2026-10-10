@@ -40,6 +40,8 @@ export interface ActState {
   startBeat: number;
   beatsRequired: number;
   maxBeats: number;
+  /** Task 3: the act also fails once this many closed beats were missed (any role); null = never */
+  maxMisses: number | null;
   /** beats keyed by beatIndex (as string, for JSON round-tripping) */
   beats: Readonly<Record<string, ActBeat>>;
   /** next beat index the host must close; beats close strictly in order */
@@ -65,6 +67,8 @@ export interface StartActInput {
   participants: readonly ActParticipant[];
   beatsRequired?: number;
   maxBeats?: number;
+  /** Task 3 (S7): close the window on this many missed beats; omit for Task 1 behaviour */
+  maxMisses?: number;
 }
 
 export function startAct(input: StartActInput): ActState {
@@ -80,6 +84,7 @@ export function startAct(input: StartActInput): ActState {
     startBeat: input.startBeat,
     beatsRequired,
     maxBeats,
+    maxMisses: input.maxMisses ?? null,
     beats: {},
     nextToClose: input.startBeat,
   };
@@ -160,9 +165,20 @@ export function closedBeats(state: ActState): number {
   return state.nextToClose - state.startBeat;
 }
 
+/** Closed beats on which at least one listed role missed. */
+export function missedBeats(state: ActState): number {
+  let n = 0;
+  for (let i = state.startBeat; i < state.nextToClose; i++) {
+    const beat = state.beats[String(i)];
+    if (beat && beat.closed && !beatAllHit(state, beat)) n++;
+  }
+  return n;
+}
+
 export function evaluate(state: ActState): ActStatus {
   if (currentRun(state) >= state.beatsRequired) return "ok";
   if (closedBeats(state) >= state.maxBeats) return "failed";
+  if (state.maxMisses !== null && missedBeats(state) >= state.maxMisses) return "failed";
   return "open";
 }
 
