@@ -8,6 +8,7 @@ import { defineConfig, devices } from "@playwright/test";
  */
 const PARTY_PORT = 1999;
 const WEB_PORT = 3100;
+const SCENE_PACE = 10;
 
 export default defineConfig({
   testDir: "./e2e",
@@ -35,7 +36,8 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command: `pnpm --filter @lsp/party exec wrangler dev --port ${PARTY_PORT}`,
+      // SCENE_PACE divides the paced scene durations so the episode plays in about a minute (Task 3)
+      command: `pnpm --filter @lsp/party exec wrangler dev --port ${PARTY_PORT} --var SCENE_PACE:${SCENE_PACE}`,
       url: `http://127.0.0.1:${PARTY_PORT}/parties/main/E2E-PROBE`,
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,
