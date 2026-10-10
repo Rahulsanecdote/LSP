@@ -31,6 +31,9 @@ export default defineConfig({
       name: "mobile-chromium",
       use: {
         ...devices["Pixel 7"],
+        // Pixel 7's viewport and touch, rendered at scale 1: software WebGL at 2.6× is about seven
+        // times the pixels, which starves the main thread the timing assertions depend on
+        deviceScaleFactor: 1,
         // PW_CHROMIUM points at a system Chromium when the managed download is unavailable
         ...(process.env.PW_CHROMIUM
           ? { launchOptions: { executablePath: process.env.PW_CHROMIUM, args: ["--no-proxy-server", "--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist"] } }

@@ -26,19 +26,54 @@ async function openRole(browser: Browser, baseURL: string, room: string, role: s
 
 const touch = { pointerId: 1, isPrimary: true, button: 0, pointerType: "touch" };
 
-/** Dispatch pointerdown on `selector` at local time `atLocal` (performance.now ms) from inside the page. */
+/**
+ * Dispatch pointerdown on `selector` at local time `atLocal` (performance.now ms) from inside the
+ * page. A plain setTimeout fires late when the main thread is busy with a software-rendered WebGL
+ * frame (over 150 ms on a two-core CI runner), so the timer wakes 120 ms early and spins to the
+ * exact moment: the scripted player is on time, as the test intends.
+ */
 async function tapAtLocal(page: Page, selector: string, atLocal: number): Promise<void> {
   await page.evaluate(
     ({ selector, atLocal }) => {
       const el = document.querySelector(selector);
       if (!el) throw new Error(`no ${selector}`);
-      const fire = () => el.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true, pointerId: 1, isPrimary: true, button: 0, pointerType: "touch" }));
-      const delay = atLocal - performance.now();
+      const fire = () => {
+        while (performance.now() < atLocal) {
+          /* spin to the exact moment */
+        }
+        el.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true, pointerId: 1, isPrimary: true, button: 0, pointerType: "touch" }));
+      };
+      const delay = atLocal - performance.now() - 120;
       if (delay <= 0) fire();
       else setTimeout(fire, delay);
     },
     { selector, atLocal },
   );
+}
+
+/**
+ * Arm the Synaesthete's mark in-page: as soon as the MARK button shows a pending commit time, fire
+ * at that local time. Reading the attribute through Playwright and scheduling back into the page
+ * costs a round trip that, on a loaded runner, can exceed the whole one-second commit hold.
+ */
+async function armMark(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const id = window.setInterval(() => {
+      const el = document.querySelector('[data-testid="tap"]');
+      const at = Number(el?.getAttribute("data-commit-local") ?? "");
+      if (!el || !at) return;
+      window.clearInterval(id);
+      const fire = () => {
+        while (performance.now() < at) {
+          /* spin to the exact moment */
+        }
+        el.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true, pointerId: 1, isPrimary: true, button: 0, pointerType: "touch" }));
+      };
+      const delay = at - performance.now() - 120;
+      if (delay <= 0) fire();
+      else window.setTimeout(fire, delay);
+    }, 10);
+  });
 }
 
 test("three contexts play S2, S5 and S7, and the clean beat lands", async ({ browser, baseURL }) => {
@@ -74,28 +109,24 @@ test("three contexts play S2, S5 and S7, and the clean beat lands", async ({ bro
     [1, "q2-where"],
   ] as const) {
     await expect(nav.getByTestId(`q-${q}`)).toBeVisible({ timeout: 10_000 });
+    // Chen watches her mind-shape build and marks the commit
+    await armMark(syn);
     await nav.getByTestId(`q-${q}`).dispatchEvent("pointerdown", touch);
-    // Chen sees the commit building: mark it at the commit
-    const mark = syn.getByTestId("tap");
-    await expect(mark).toHaveAttribute("data-commit-local", /\d+/, { timeout: 5_000 });
-    const commitLocal = Number(await mark.getAttribute("data-commit-local"));
-    await tapAtLocal(syn, '[data-testid="tap"]', commitLocal);
     await nav.waitForTimeout(1300);
     // release after the commit: ignored by the server, not a cancel. The wheel may already be gone,
     // because a conclusive mark closes the trial at once.
     const held = nav.getByTestId(`q-${q}`);
     if (await held.count()) await held.dispatchEvent("pointerup", touch);
     await expect(theo.getByTestId(`trial-${i}`)).toHaveAttribute("data-done", "1", { timeout: 10_000 });
-    await expect(theo.getByTestId(`trial-${i}`)).toContainText("conclusive");
+    // the verdict itself: "inconclusive" also contains the word "conclusive"
+    await expect(theo.getByTestId(`trial-${i}`)).toHaveAttribute("data-conclusive", "1");
     await theo.getByTestId("advance").click(); // next trial
   }
   // trial 3 is the control: the server picks the moment; Chen marks what he sees
   {
-    const mark = syn.getByTestId("tap");
-    await expect(mark).toHaveAttribute("data-commit-local", /\d+/, { timeout: 5_000 });
-    const commitLocal = Number(await mark.getAttribute("data-commit-local"));
-    await tapAtLocal(syn, '[data-testid="tap"]', commitLocal);
+    await armMark(syn);
     await expect(theo.getByTestId("trial-2")).toHaveAttribute("data-done", "1", { timeout: 15_000 });
+    await expect(theo.getByTestId("trial-2")).toHaveAttribute("data-conclusive", "1");
   }
   await theo.getByTestId("classify-anomaly").click();
   await theo.screenshot({ path: "test-results/s5-theorist.png" });

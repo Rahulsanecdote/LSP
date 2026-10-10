@@ -88,7 +88,7 @@ function TrialLine({ t }: { t: S5TrialView }) {
   const commit = x(t.commitAt);
   const tap = x(t.synTapAt);
   return (
-    <div className="panel" data-testid={`trial-${t.index}`} data-done={t.done ? "1" : "0"} style={{ fontSize: 13 }}>
+    <div className="panel" data-testid={`trial-${t.index}`} data-done={t.done ? "1" : "0"} data-conclusive={t.conclusive === null ? "" : t.conclusive ? "1" : "0"} style={{ fontSize: 13 }}>
       <div className="row" style={{ justifyContent: "space-between" }}>
         <span>
           Trial {t.index + 1} {t.kind === "control" ? "(control: she asks nothing)" : ""}
