@@ -622,7 +622,7 @@ spread: 60 beats measured from beat 6, 3 clients, human sd 40 ms, seed 1, 38.4 s
 
 ## Task 2 report
 
-Written 2026-10-10 after a three-device run on the deployed Worker and web app. Status: **§6 done-criteria met on real devices; two phone-only visual defects found in the run are fixed and covered by the e2e assertion (PR 8); awaiting acceptance.** Open items are listed under "For the design side".
+Written 2026-10-10 after a three-device run on the deployed Worker and web app. Status: **§6 done-criteria met on real devices; two phone-only visual defects found in the run are fixed and covered by the e2e assertion (PR 8).** **Accepted and closed by Rimuru, 2026-10-10.** Open items are listed under "For the design side".
 
 ### Done-criteria
 
