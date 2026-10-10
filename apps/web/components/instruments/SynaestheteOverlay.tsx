@@ -28,7 +28,7 @@ const TINTS: [number, number, number][] = [
  */
 export function SynaestheteOverlay({ snap }: { snap: BeatClientSnapshot | null }) {
   const fps = useFps();
-  const clients = useMemo(() => [...(snap?.stats?.clients ?? [])].sort((a, b) => a.label.localeCompare(b.label)).slice(0, MAX_BLOBS), [snap?.stats]);
+  const clients = useMemo(() => (snap?.stats?.clients ?? []).filter((c) => c.connected).sort((a, b) => a.label.localeCompare(b.label)).slice(0, MAX_BLOBS), [snap?.stats]);
   const blobs: Blob[] = useMemo(
     () =>
       clients.map((c, i) => {
