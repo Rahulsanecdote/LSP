@@ -45,53 +45,80 @@ async function openRole(browser: Browser, baseURL: string, room: string, role: s
 const touch = { pointerId: 1, isPrimary: true, button: 0, pointerType: "touch" };
 
 /**
- * Dispatch pointerdown on `selector` at local time `atLocal` (performance.now ms) from inside the
- * page. A plain setTimeout fires late when the main thread is busy with a software-rendered WebGL
- * frame (over 150 ms on a two-core CI runner), so the timer wakes 120 ms early and spins to the
- * exact moment: the scripted player is on time, as the test intends.
- */
-async function tapAtLocal(page: Page, selector: string, atLocal: number): Promise<void> {
-  await page.evaluate(
-    ({ selector, atLocal }) => {
-      const el = document.querySelector(selector);
-      if (!el) throw new Error(`no ${selector}`);
-      const fire = () => {
-        while (performance.now() < atLocal) {
-          /* spin to the exact moment */
-        }
-        el.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true, pointerId: 1, isPrimary: true, button: 0, pointerType: "touch" }));
-      };
-      const delay = atLocal - performance.now() - 120;
-      if (delay <= 0) fire();
-      else setTimeout(fire, delay);
-    },
-    { selector, atLocal },
-  );
-}
-
-/**
  * Arm the Synaesthete's mark in-page: as soon as the MARK button shows a pending commit time, fire
  * at that local time. Reading the attribute through Playwright and scheduling back into the page
  * costs a round trip that, on a loaded runner, can exceed the whole one-second commit hold.
  */
 async function armMark(page: Page): Promise<void> {
   await page.evaluate(() => {
+    const read = (): number => Number(document.querySelector('[data-testid="tap"]')?.getAttribute("data-commit-local") ?? "") || 0;
     const id = window.setInterval(() => {
-      const el = document.querySelector('[data-testid="tap"]');
-      const at = Number(el?.getAttribute("data-commit-local") ?? "");
-      if (!el || !at) return;
+      const first = read();
+      if (!first) return;
       window.clearInterval(id);
       const fire = () => {
+        // the page re-renders the commit time from its current clock estimate; use the latest
+        const at = read() || first;
         while (performance.now() < at) {
           /* spin to the exact moment */
         }
-        el.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true, pointerId: 1, isPrimary: true, button: 0, pointerType: "touch" }));
+        document.querySelector('[data-testid="tap"]')?.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true, pointerId: 1, isPrimary: true, button: 0, pointerType: "touch" }));
       };
-      const delay = at - performance.now() - 120;
+      const delay = first - performance.now() - 120;
       if (delay <= 0) fire();
       else window.setTimeout(fire, delay);
     }, 10);
   });
+}
+
+/**
+ * Arm one seat's consent taps in-page, before the act opens: when the scene shows the act's first
+ * beat, tap on that beat and the ones after it, the way a player follows the cue the page renders.
+ * Each tap re-reads the beat time the page currently renders (it moves with the clock estimate)
+ * and spins to it. A beat the page could not reach in time (frozen past it) is skipped, not fired
+ * late: late taps bunch onto one beat. Scheduling the taps from Playwright after the act opened
+ * took longer than the act's lead on a loaded CI runner (seen: six taps on one beat).
+ */
+async function armBeats(page: Page, selector: string, beats = 9): Promise<void> {
+  await page.evaluate(
+    ({ selector, beats }) => {
+      const read = (): { start: number; interval: number } | null => {
+        const el = document.querySelector('[data-testid="scene"]');
+        const start = Number(el?.getAttribute("data-act-start-local") ?? "");
+        const interval = Number(el?.getAttribute("data-interval") ?? "");
+        return start && interval ? { start, interval } : null;
+      };
+      let k = 0;
+      let opened = false;
+      const step = (): void => {
+        const r = read();
+        if (!r) {
+          if (!opened) window.setTimeout(step, 10); // waiting for the act; once it has closed, stop
+          return;
+        }
+        opened = true;
+        if (k >= beats) return;
+        const lead = r.start + k * r.interval - performance.now();
+        if (lead > 120) {
+          window.setTimeout(step, lead - 120);
+          return;
+        }
+        const at = r.start + k * r.interval;
+        k++;
+        if (at < performance.now() - 60) {
+          window.setTimeout(step, 0); // missed it; take the next beat instead of firing late
+          return;
+        }
+        while (performance.now() < at) {
+          /* spin to the exact moment */
+        }
+        document.querySelector(selector)?.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true, pointerId: 1, isPrimary: true, button: 0, pointerType: "touch" }));
+        window.setTimeout(step, 0);
+      };
+      step();
+    },
+    { selector, beats },
+  );
 }
 
 test("three contexts play S2, S5 and S7, and the clean beat lands", async ({ browser, baseURL }) => {
@@ -156,27 +183,26 @@ test("three contexts play S2, S5 and S7, and the clean beat lands", async ({ bro
   // ---- S7: the demonstration, Sarah's words, then everyone on the beat
   for (const p of [nav, syn, theo]) await expect(scene(p)).toHaveAttribute("data-scene", "s7", { timeout: 10_000 });
   await expect(scene(theo)).toHaveAttribute("data-phase", "phrasing", { timeout: 15_000 });
-  await theo.getByTestId("phrasing-clean").click();
+  // every seat is armed before the words are chosen: the act opens less than a second before its first beat
   const targets: [Page, string][] = [
     [nav, '[data-testid="hold"]'],
     [syn, '[data-testid="tap"]'],
     [theo, '[data-testid="tap"]'],
   ];
-  for (const [p] of targets) await expect(scene(p)).toHaveAttribute("data-act-start-local", /\d+/, { timeout: 10_000 });
-  // each client schedules its own taps on the first six beats of the window, from its own clock sync
-  for (const [p, selector] of targets) {
-    const start = Number(await scene(p).getAttribute("data-act-start-local"));
-    const interval = Number(await scene(p).getAttribute("data-interval"));
-    for (let k = 0; k < 6; k++) await tapAtLocal(p, selector, start + k * interval);
-  }
-  // Mid-act, all three at once, but only once each page has fired its third tap: a software-
-  // rendered screenshot stalls its page's main thread, and taken earlier it pushed the scored taps
-  // of beats 1 and 2 late, so they bunched onto one beat (seen on a loaded runner).
-  for (const [p] of targets) {
-    const start = Number(await scene(p).getAttribute("data-act-start-local"));
-    const interval = Number(await scene(p).getAttribute("data-interval"));
-    await p.evaluate((at) => new Promise((r) => setTimeout(r, Math.max(0, at - performance.now()))), start + 2 * interval + 60);
-  }
+  await Promise.all(targets.map(([p, selector]) => armBeats(p, selector)));
+  await theo.getByTestId("phrasing-clean").click();
+  // Screenshot the act in progress: once the run shows two clean beats, or, on a runner too slow
+  // to look in time, whatever S7 state follows (the reply). Never earlier: the taps come first.
+  await expect(scene(theo)).toHaveAttribute("data-phase", /^(act|between|reply|done)$/, { timeout: 10_000 });
+  await expect
+    .poll(
+      async () => {
+        if ((await scene(theo).getAttribute("data-phase")) !== "act") return true;
+        return /run [23]\/3/.test((await theo.getByTestId("run").textContent().catch(() => "")) ?? "");
+      },
+      { timeout: 20_000, intervals: [50] },
+    )
+    .toBe(true);
   await Promise.all([
     theo.screenshot({ path: "test-results/s7-theorist.png" }),
     syn.screenshot({ path: "test-results/s7-synaesthete.png" }),
