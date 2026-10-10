@@ -8,6 +8,9 @@ import { HorizonDrone } from "@/lib/audio";
 import { useFps } from "@/lib/useFps";
 import { Frost } from "./Frost";
 import { HORIZON_Y, Streams, labelPosition, layoutStreams } from "./Streams";
+
+/** One label level: taller than the tallest label (three lines at 11px/1.2 plus its shadow). */
+const LABEL_STEP_PX = 46;
 import { GlCanvasBoundary } from "./GlCanvasBoundary";
 
 /**
@@ -63,16 +66,25 @@ export function NavigatorRead({ snap, client }: { snap: BeatClientSnapshot | nul
   useEffect(() => drone.current?.setPastHorizon(pastHorizon), [pastHorizon]);
 
   const layout = useMemo(() => (branchSet ? layoutStreams(branchSet, aspect) : []), [branchSet, aspect]);
-  // labels that would land on the same spot (same terminus, neighbouring streams) step upward
+  // Labels that would overprint each other step upward. Two labels collide when their centres
+  // are within a label's width horizontally (labels are up to 38vw wide) and within a label's
+  // height vertically; on a phone the fan is narrow enough that neighbouring streams collide even
+  // with different termini, so this is measured in screen space, not by terminus.
+  // Each label takes the lowest level no colliding neighbour holds, so a four-stream fan on a
+  // phone alternates between two levels instead of climbing a staircase.
   const labelOffsets = useMemo(() => {
-    const seen = new Map<string, number>();
+    const placed: { leftPct: number; bottomPct: number; offset: number }[] = [];
     return layout.map((l) => {
-      const key = `${Math.min(l.endY, HORIZON_Y).toFixed(3)}`;
-      const n = seen.get(key) ?? 0;
-      seen.set(key, n + 1);
-      return n;
+      const pos = labelPosition(l, aspect);
+      const taken = new Set(
+        placed.filter((q) => Math.abs(q.leftPct - pos.leftPct) < 38 && Math.abs(q.bottomPct - pos.bottomPct) < 9).map((q) => q.offset),
+      );
+      let offset = 0;
+      while (taken.has(offset)) offset += 1;
+      placed.push({ ...pos, offset });
+      return offset;
     });
-  }, [layout]);
+  }, [layout, aspect]);
 
   const down = useCallback(
     (e: ReactPointerEvent) => {
@@ -106,7 +118,8 @@ export function NavigatorRead({ snap, client }: { snap: BeatClientSnapshot | nul
       onPointerUp={up}
       onPointerCancel={up}
       onLostPointerCapture={up}
-      style={{ position: "fixed", inset: 0, touchAction: "none", userSelect: "none", background: "#0e0f12", cursor: ready ? "pointer" : "wait" }}
+      onContextMenu={(e) => e.preventDefault()}
+      style={{ position: "fixed", inset: 0, touchAction: "none", userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none", background: "#0e0f12", cursor: ready ? "pointer" : "wait" }}
     >
       <GlCanvasBoundary>
         <Canvas dpr={[1, 2]} gl={{ antialias: false, powerPreference: "high-performance" }} frameloop="always" style={{ position: "absolute", inset: 0 }}>
@@ -131,7 +144,7 @@ export function NavigatorRead({ snap, client }: { snap: BeatClientSnapshot | nul
                 position: "absolute",
                 left: `${pos.leftPct}%`,
                 bottom: `${pos.bottomPct}%`,
-                transform: `translate(-50%, ${l.beyondHorizon ? -(labelOffsets[i] ?? 0) * 30 : -6 - (labelOffsets[i] ?? 0) * 30}px)`,
+                transform: `translate(-50%, ${l.beyondHorizon ? -(labelOffsets[i] ?? 0) * LABEL_STEP_PX : -6 - (labelOffsets[i] ?? 0) * LABEL_STEP_PX}px)`,
                 opacity: shown ? (l.beyondHorizon ? 0.45 : 0.6 + 0.4 * l.bright) : 0,
                 transition: "opacity 180ms ease-out",
                 color: "#f2f2f0",

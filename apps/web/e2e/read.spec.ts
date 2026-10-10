@@ -55,6 +55,27 @@ test("hold → flare within 200 ms → DEBT increments, server-mediated", async 
   // mid-hold evidence: streams formed, labels up, overlay lit
   await nav.waitForTimeout(700);
   await expect(nav.getByTestId("stream-label").first()).toBeVisible();
+  // Every shown label must be legible: no two label boxes may overlap (seen on real phones, where
+  // the narrow fan put the safe stream's label under the first failure stream's).
+  const labelBoxes = () =>
+    nav.getByTestId("stream-label").evaluateAll((els) =>
+      els
+        .filter((el) => Number(getComputedStyle(el).opacity) > 0.3)
+        .map((el) => {
+          const r = el.getBoundingClientRect();
+          return { x: r.x, y: r.y, w: r.width, h: r.height, text: el.textContent ?? "" };
+        }),
+    );
+  // labels fade in as their streams grow; under a software renderer that takes a few seconds
+  await expect.poll(async () => (await labelBoxes()).length, { timeout: 20_000 }).toBeGreaterThanOrEqual(2);
+  const boxes = await labelBoxes();
+  for (let i = 0; i < boxes.length; i++)
+    for (let j = i + 1; j < boxes.length; j++) {
+      const a = boxes[i]!;
+      const b = boxes[j]!;
+      const overlap = a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+      expect(overlap, `labels overlap: "${a.text}" and "${b.text}"`).toBe(false);
+    }
   await nav.screenshot({ path: "test-results/navigator-holding.png" });
   await syn.screenshot({ path: "test-results/synaesthete-flare.png" });
   console.log(`synaesthete sim: ${await syn.getByTestId("flare").getAttribute("data-sim")}`);
