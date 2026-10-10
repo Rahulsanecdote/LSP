@@ -55,6 +55,10 @@ test("hold → flare within 200 ms → DEBT increments, server-mediated", async 
   // mid-hold evidence: streams formed, labels up, overlay lit
   await nav.waitForTimeout(700);
   await expect(nav.getByTestId("stream-label").first()).toBeVisible();
+  // Task 2b: the streams are differential-growth polylines. Nodes must have been inserted as the
+  // tips advanced (four streams start with two nodes each) and no segment may cross another.
+  await expect.poll(async () => Number(await hold.getAttribute("data-nodes")), { timeout: 20_000 }).toBeGreaterThan(8);
+  await expect(hold).toHaveAttribute("data-crossings", "0");
   // Every shown label must be legible: no two label boxes may overlap (seen on real phones, where
   // the narrow fan put the safe stream's label under the first failure stream's).
   const labelBoxes = () =>
