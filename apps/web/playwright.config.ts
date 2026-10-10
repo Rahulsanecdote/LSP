@@ -15,6 +15,10 @@ export default defineConfig({
   timeout: 30_000,
   expect: { timeout: 5_000 },
   fullyParallel: false,
+  // The read and S7 specs each drive three software-rendered WebGL pages and measure timing
+  // (event latency, taps on the beat). Two at once on a two-core CI runner starves both: event
+  // latency over 1 s and taps landing off the beat. One worker keeps the measurements honest.
+  workers: 1,
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? [["list"], ["html", { open: "never" }]] : "list",
   use: {

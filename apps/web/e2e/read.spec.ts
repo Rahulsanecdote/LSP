@@ -1,12 +1,20 @@
-import { expect, test, type Browser, type Page } from "@playwright/test";
+import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
 
 /**
  * Task 2 done-criterion (SLICE_HANDOFF.md §6): the Navigator holds on one phone, the
  * Synaesthete's phone flares within 200 ms, and the DEBT counter on the Theorist's phone
  * increments, all server-mediated. Three browser contexts, three roles, one room.
  */
+// Every context a test opens is closed after it: three software-rendered WebGL pages left running
+// would starve the next spec in the same worker (that is how the S7 spec first failed on CI).
+const contexts: BrowserContext[] = [];
+test.afterEach(async () => {
+  await Promise.all(contexts.splice(0).map((c) => c.close()));
+});
+
 async function openRole(browser: Browser, baseURL: string, room: string, role: string): Promise<Page> {
   const ctx = await browser.newContext();
+  contexts.push(ctx);
   const page = await ctx.newPage();
   await page.goto(`${baseURL}/r/${room}?role=${role}`);
   await expect(page.getByTestId("offset")).toHaveText(/offset -?\d+ ms/, { timeout: 10_000 });

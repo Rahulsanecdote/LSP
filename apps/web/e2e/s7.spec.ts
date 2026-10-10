@@ -1,4 +1,4 @@
-import { expect, test, type Browser, type Page } from "@playwright/test";
+import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
 
 /**
  * Task 3 done-criterion (SLICE_HANDOFF.md §7): three browser contexts complete S7 with a scripted
@@ -8,8 +8,16 @@ import { expect, test, type Browser, type Page } from "@playwright/test";
  * scheduled in-page at the act's beat times. Every step is an intent the server may refuse;
  * the assertions read the server's view back from each role's page.
  */
+// Every context a test opens is closed after it: three software-rendered WebGL pages left running
+// would starve the next spec in the same worker (that is how the S7 spec first failed on CI).
+const contexts: BrowserContext[] = [];
+test.afterEach(async () => {
+  await Promise.all(contexts.splice(0).map((c) => c.close()));
+});
+
 async function openRole(browser: Browser, baseURL: string, room: string, role: string): Promise<Page> {
   const ctx = await browser.newContext();
+  contexts.push(ctx);
   const page = await ctx.newPage();
   await page.goto(`${baseURL}/r/${room}?role=${role}`);
   await expect(page.getByTestId("offset")).toHaveText(/offset -?\d+ ms/, { timeout: 10_000 });
