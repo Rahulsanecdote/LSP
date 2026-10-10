@@ -11,8 +11,26 @@ import { expect, test, type Browser, type BrowserContext, type Page } from "@pla
 // Every context a test opens is closed after it: three software-rendered WebGL pages left running
 // would starve the next spec in the same worker (that is how the S7 spec first failed on CI).
 const contexts: BrowserContext[] = [];
+let roomCode: string | null = null;
 test.afterEach(async () => {
   await Promise.all(contexts.splice(0).map((c) => c.close()));
+  // Print what the server measured, pass or fail: on a slow CI runner this is the only way to see
+  // whether a missed beat was the scripted tap, the page's clock sync, or the act logic.
+  if (!roomCode) return;
+  try {
+    const res = await fetch(`http://127.0.0.1:1999/parties/main/${roomCode}`);
+    const s = (await res.json()) as {
+      players: { label: string; role: string }[];
+      tapLog: { role: string; beatIndex: number; deltaMs: number; auditDeltaMs: number | null; hit: boolean }[];
+      scene: { id: string; consent: string | null; log: { at: number; text: string }[] };
+    };
+    console.log(`room ${roomCode}: scene ${s.scene.id}, consent ${s.scene.consent}`);
+    for (const l of s.scene.log.filter((e) => /Trial|tap|Consent|window/i.test(e.text))) console.log(`  ledger ${(l.at / 1000).toFixed(1)} s  ${l.text}`);
+    for (const t of s.tapLog.slice(-24)) console.log(`  tap ${t.role.padEnd(11)} beat ${t.beatIndex}  scored ${t.deltaMs.toFixed(0)} ms  audit ${t.auditDeltaMs === null ? "—" : t.auditDeltaMs.toFixed(0)} ms  ${t.hit ? "hit" : "miss"}`);
+  } catch (e) {
+    console.log(`room summary unavailable: ${String(e)}`);
+  }
+  roomCode = null;
 });
 
 async function openRole(browser: Browser, baseURL: string, room: string, role: string): Promise<Page> {
@@ -79,6 +97,7 @@ async function armMark(page: Page): Promise<void> {
 test("three contexts play S2, S5 and S7, and the clean beat lands", async ({ browser, baseURL }) => {
   test.setTimeout(180_000);
   const room = `S7${Date.now().toString(36).toUpperCase().slice(-4)}`;
+  roomCode = room;
   const base = baseURL ?? "http://localhost:3100";
   const nav = await openRole(browser, base, room, "navigator");
   const syn = await openRole(browser, base, room, "synaesthete");
@@ -150,9 +169,14 @@ test("three contexts play S2, S5 and S7, and the clean beat lands", async ({ bro
     const interval = Number(await scene(p).getAttribute("data-interval"));
     for (let k = 0; k < 6; k++) await tapAtLocal(p, selector, start + k * interval);
   }
-  // mid-act, all three at once: a software-rendered screenshot can outlast the 2 s act
-  const firstBeat = Number(await scene(theo).getAttribute("data-act-start-local"));
-  await theo.evaluate((at) => new Promise((r) => setTimeout(r, Math.max(0, at + 700 - performance.now()))), firstBeat);
+  // Mid-act, all three at once, but only once each page has fired its third tap: a software-
+  // rendered screenshot stalls its page's main thread, and taken earlier it pushed the scored taps
+  // of beats 1 and 2 late, so they bunched onto one beat (seen on a loaded runner).
+  for (const [p] of targets) {
+    const start = Number(await scene(p).getAttribute("data-act-start-local"));
+    const interval = Number(await scene(p).getAttribute("data-interval"));
+    await p.evaluate((at) => new Promise((r) => setTimeout(r, Math.max(0, at - performance.now()))), start + 2 * interval + 60);
+  }
   await Promise.all([
     theo.screenshot({ path: "test-results/s7-theorist.png" }),
     syn.screenshot({ path: "test-results/s7-synaesthete.png" }),
@@ -161,7 +185,11 @@ test("three contexts play S2, S5 and S7, and the clean beat lands", async ({ bro
   // no stream content in S7: the field is the collapse, not a read
   expect(await nav.getByTestId("stream-label").count()).toBe(0);
 
-  // the act fires server-side: the lights dim on every screen, Chen says his line, the end card reads "answered"
+  // the act fires server-side: the reply holds on every screen (the lights dim, Chen's line), then the end card
+  await expect(scene(syn)).toHaveAttribute("data-phase", "reply", { timeout: 20_000 });
+  await expect(syn.getByTestId("chen-line")).toContainText("It's conserving something.");
+  await expect(syn.getByTestId("tap-colours")).toHaveAttribute("data-in-rhythm", "1");
+  await syn.screenshot({ path: "test-results/s7-synaesthete-reply.png" });
   for (const p of [nav, syn, theo]) await expect(scene(p)).toHaveAttribute("data-scene", "end", { timeout: 20_000 });
   for (const p of [nav, syn, theo]) {
     await expect(p.getByTestId("end")).toHaveAttribute("data-ending", "answered");

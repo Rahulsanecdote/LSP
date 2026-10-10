@@ -51,10 +51,13 @@ export default defineConfig({
       cwd: "../..",
     },
     {
-      command: `pnpm --filter @lsp/web exec next dev --port ${WEB_PORT}`,
+      // A production build, not `next dev`: development React and the dev overlay cost several
+      // times the main-thread time, and the S5 marks and S7 beat taps are timed on that thread.
+      // It is also what players get.
+      command: `pnpm --filter @lsp/web exec next build && pnpm --filter @lsp/web exec next start --port ${WEB_PORT}`,
       url: `http://localhost:${WEB_PORT}/`,
       reuseExistingServer: !process.env.CI,
-      timeout: 120_000,
+      timeout: 240_000,
       cwd: "../..",
       env: { NEXT_PUBLIC_PARTY_HOST: `127.0.0.1:${PARTY_PORT}` },
     },
