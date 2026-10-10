@@ -7,7 +7,7 @@ A browser-based, multiplayer cooperative narrative game. Three players on phones
 2. The design doc named in the task you're on (`docs/design/`). Design docs are spec for behaviour and content, not suggestions.
 
 ## Current task
-Task 1 (the beat engine) is **closed and accepted** (2026-10-05). Task 2 (the Navigator instrument, §6) is **built and measured on three real devices**; its report is appended to `docs/handoff/SLICE_HANDOFF.md` and awaits acceptance. Next is Task 2b (differential-growth streams, §6b) once Task 2 is accepted. Open design decision carried forward: the 150 ms consent window measured 15/19 beats with three real devices because human tap error is ~50–58 ms sd, not sync; it gates Task 3's S7. Do not change the window literal without an amendment. (Task 4 may run in parallel in a separate session if asked.)
+Tasks 1 and 2 are **closed and accepted** (2026-10-05, 2026-10-10). Task 2b (differential-growth streams, §6b) is **built**; its report is in `docs/handoff/SLICE_HANDOFF.md` and waits on one phone run (fps during a hold) and acceptance. Then Task 3 (scenes S2/S5/S7, §7). Open design decision carried forward: the 150 ms consent window measured 15/19 beats with three real devices because human tap error is ~50–58 ms sd, not sync; it gates Task 3's S7. Do not change the window literal without an amendment. (Task 4 may run in parallel in a separate session if asked.)
 
 ## Non-negotiables (summary — the handoff has the full list)
 - TypeScript `strict`, no `any`. pnpm workspaces. Node 20+.

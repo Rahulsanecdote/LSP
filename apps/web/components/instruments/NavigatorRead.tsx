@@ -7,7 +7,7 @@ import type { BeatClient, BeatClientSnapshot } from "@/lib/beatClient";
 import { HorizonDrone } from "@/lib/audio";
 import { useFps } from "@/lib/useFps";
 import { Frost } from "./Frost";
-import { HORIZON_Y, Streams, labelPosition, layoutStreams } from "./Streams";
+import { HORIZON_Y, Streams, labelPosition, layoutStreams, type SimReport } from "./Streams";
 
 /** One label level: taller than the tallest label (three lines at 11px/1.2 plus its shadow). */
 const LABEL_STEP_PX = 46;
@@ -30,6 +30,7 @@ export function NavigatorRead({ snap, client }: { snap: BeatClientSnapshot | nul
   const [aspect, setAspect] = useState(1);
   const surface = useRef<HTMLDivElement | null>(null);
   const growRef = useRef<number[]>([]);
+  const simRef = useRef<SimReport>({ nodes: 0, crossings: 0 });
 
   // local clock for the hold preview, 30 Hz
   useEffect(() => {
@@ -114,6 +115,8 @@ export function NavigatorRead({ snap, client }: { snap: BeatClientSnapshot | nul
       data-testid="hold"
       data-holding={holding ? "1" : "0"}
       data-branchset={branchSet ? "1" : "0"}
+      data-nodes={simRef.current.nodes}
+      data-crossings={simRef.current.crossings}
       onPointerDown={down}
       onPointerUp={up}
       onPointerCancel={up}
@@ -124,7 +127,7 @@ export function NavigatorRead({ snap, client }: { snap: BeatClientSnapshot | nul
       <GlCanvasBoundary>
         <Canvas dpr={[1, 2]} gl={{ antialias: false, powerPreference: "high-performance" }} frameloop="always" style={{ position: "absolute", inset: 0 }}>
           <Frost holding={holding} pastHorizon={pastHorizon} />
-          <Streams branchSet={branchSet} holding={holding} pastHorizon={pastHorizon} onGrow={(g) => (growRef.current = g)} />
+          <Streams branchSet={branchSet} holding={holding} pastHorizon={pastHorizon} onGrow={(g) => (growRef.current = g)} onSim={(r) => (simRef.current = r)} />
         </Canvas>
       </GlCanvasBoundary>
 
