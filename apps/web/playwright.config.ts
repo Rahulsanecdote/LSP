@@ -34,10 +34,14 @@ export default defineConfig({
         // Pixel 7's viewport and touch, rendered at scale 1: software WebGL at 2.6× is about seven
         // times the pixels, which starves the main thread the timing assertions depend on
         deviceScaleFactor: 1,
-        // PW_CHROMIUM points at a system Chromium when the managed download is unavailable
-        ...(process.env.PW_CHROMIUM
-          ? { launchOptions: { executablePath: process.env.PW_CHROMIUM, args: ["--no-proxy-server", "--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist"] } }
-          : {}),
+        launchOptions: {
+          // PW_CHROMIUM points at a system Chromium when the managed download is unavailable
+          ...(process.env.PW_CHROMIUM ? { executablePath: process.env.PW_CHROMIUM } : {}),
+          // Software WebGL through SwiftShader on every run, CI included. Without these flags a
+          // GPU-less runner falls back to a far slower path: the navigator and synaesthete pages
+          // freeze for whole beats and the S7 act misses them (Task 3 report, CI hardening 8).
+          args: ["--no-proxy-server", "--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist"],
+        },
       },
     },
   ],
