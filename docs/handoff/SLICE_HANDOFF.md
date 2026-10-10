@@ -694,7 +694,7 @@ Written 2026-10-10. Status: **built; the Vitest half of the §6b done-criterion 
 | Grow over 600 ms (design doc §1) | met | the Task 2 growth spring is unchanged; nodes are inserted as the tip advances, not pre-placed |
 | Streams stay readable | met | chord deviation of every stream under 8% and above 0 (it wavers, it is not straight); tips land within 1e-3 of their targets; every edge within [minEdge/2, 1.5 maxEdge]; node count bounded by `maxNodesPerLine` |
 | Released stream retracts | met | 120 steps after release the field holds under a quarter of its grown nodes, each line keeping its two anchors |
-| 60 fps on a phone | **pending** | step cost on the dev box: 0.65 ms per step at seven fully grown streams (583 nodes), two steps per frame at 60 fps; S2's four streams are about a third of that. Device fps to be read off the Navigator's diag line during a hold |
+| 60 fps on a phone | **met on the Galaxy S26 Ultra (120 fps); iPhone pending** | S26 Ultra, Chrome, Wi-Fi, 2026-10-10, production build: 120 fps on the diag line during a 5.39 s hold of the S2 fixture's four streams (read r111: projected 80.8 s, +1), streams visibly grown polylines in the screenshot. Step cost on the dev box: 0.65 ms per step at seven fully grown streams (583 nodes); S2's four are about a third of that |
 | Rendered screenshot in the e2e run | met | `navigator-holding.png` from `apps/web/e2e/read.spec.ts`; both specs green locally (flare event latency 7 ms, +2 charged on a 6.6 s hold) |
 | No third-party code in motion or shaders | met | written from the published description and the standard formulas |
 
@@ -715,5 +715,5 @@ Tests: motion 27 (10 spring, 17 growth), protocol 44, party 27, sim 22; 2 e2e sp
 
 ### For the design side
 
-- One device run: Navigator hold on the S26 Ultra and the iPhone, fps on the diag line, and whether the streams read as *growing* rather than appearing. That closes the last row.
+- The iPhone half of the device run: a Navigator hold with the fps on the diag line (the S26 Ultra row is in: 120 fps). And a word on whether the streams read as *growing* rather than appearing.
 - The waver is set subtle (under 8% of chord). The parameter table is the knob.
