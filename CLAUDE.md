@@ -28,7 +28,7 @@ pnpm --filter @lsp/sim run spread -- --clients 3 --beats 60
 pnpm --filter @lsp/party dev   # room server (wrangler dev, Workers + Durable Objects) on :1999
 pnpm --filter @lsp/party deploy:party   # wrangler deploy to your Cloudflare account
 pnpm --filter @lsp/web dev     # Next.js shell on :3000 (NEXT_PUBLIC_PARTY_HOST for a deployed room server)
-pnpm --filter @lsp/web e2e     # Playwright: diag page, the Task 2 read, and the whole S2/S5/S7 slice; starts both dev servers
+pnpm --filter @lsp/web e2e     # Playwright: diag page, the Task 2 read, the whole S2/S5/S7 slice; starts wrangler dev and a production Next build, one worker
 ```
 
 ## Working style

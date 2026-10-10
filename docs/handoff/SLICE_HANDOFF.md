@@ -762,6 +762,20 @@ The Navigator's three revealing S2 lines; the Synaesthete's three S2 options; th
 - The Synaesthete's Navigator blob sat under the S5/S7 controls; the blob ring is raised in those scenes.
 - The Navigator's S7 field still showed the S2 stream labels; labels are hidden in tap mode (S7 is the collapse, not a read).
 - The first S2 timing (a linear 120 s descent) gave the crew about three seconds between the prompt and the seal failing; the three-phase descent gives them forty (four at test pace).
+- A clean S7 beat jumped straight to the end card, so the reply (Chen's line, the dimming over his overlay) was never on screen. S7 now holds in its reply phase for 6 s (`S7_REPLY_HOLD_MS`, not paced) before the end card; the e2e run screenshots the Synaesthete during it.
+
+### CI hardening of the e2e run (found on PR 10's CI, two-core runner)
+
+The suite passed locally and failed on CI, for test-harness reasons, each reproduced locally under `taskset` before it was fixed:
+
+1. Two three-browser specs ran in parallel workers on two cores: event latency 1,053 ms, taps off the beat. Now one worker.
+2. Neither spec closed its browser contexts, so the read spec's three WebGL pages kept rendering through the S7 spec. Contexts close after every test.
+3. The S5 mark was scheduled through a Playwright round trip that, under load, ate the whole one-second commit hold (+1,465 ms measured). The mark is armed in-page and spins to the exact moment.
+4. Trials were checked with `toContainText("conclusive")`, which "inconclusive" also matches. Each trial line now carries `data-conclusive` and the spec asserts it.
+5. Mid-act screenshots stalled the tapping pages and bunched their taps onto one beat (three taps 50 ms apart, from the server's tap log). They are taken after each page's third tap.
+6. The web server under test is now a production build (`next build && next start`), not `next dev`: development React cost several times the main-thread time the timing depends on. Test pages render at device scale 1.
+
+Validated with retries off: full suite on two cores (several runs) and on one core. The spec prints the server's tap log and Ledger after every S7 run, so a future CI failure shows its own numbers.
 
 ### For the design side
 
