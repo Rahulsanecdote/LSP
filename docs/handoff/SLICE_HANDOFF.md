@@ -717,3 +717,54 @@ Tests: motion 27 (10 spring, 17 growth), protocol 44, party 27, sim 22; 2 e2e sp
 
 - The iPhone half of the device run: a Navigator hold with the fps on the diag line (the S26 Ultra row is in: 120 fps). And a word on whether the streams read as *growing* rather than appearing.
 - The waver is set subtle (under 8% of chord). The parameter table is the knob.
+
+## Task 3 report
+
+Written 2026-10-10. Status: **built; the §7 done-criterion is met in Playwright (three browser contexts play S2, S5 and S7 and land a scripted clean beat). Not yet played on three real phones; that run, and the S7 clean-beat rate it measures at the 150 ms window, is the open item.** Decisions taken under the approved plan are listed below for confirmation.
+
+### What was built
+
+- **The server owns the episode.** `apps/party/src/core/scenes.ts` drives `state.scene` through lobby → S2 → interlude (S3, S4 as dated cards) → S5 → S7 → end, on the same `nextWakeAt()`/`tick()` alarm path as the act. Clients send intents only (`choose`, `continue`, `focus`, `callAgain`, plus the existing `tap` and `readStart`/`readEnd`); the server may refuse any of them.
+- **Per-role projection** (`packages/protocol/src/scene.ts`): each connection gets only what its seat may know. The Navigator's wheel never reaches the others; the Synaesthete never receives stream content (the e2e test still asserts it); the Theorist gets telemetry, the comms the others chose to send her, and the Ledger. Per-human DEBT is visible to all (design §0); TRUST is never sent to a client and appears only in the room summary.
+- **S2**: a three-phase descent (fast to −1,380 m, a forty-second approach to −1,420 m, docking); the reflex prompt at −1,380 m; the Navigator's four-line wheel (only "Sarah, run a seal diagnostic for me, humor me." does not reveal); the Synaesthete's three options (silence, the private question to Elena, a vouch to Sarah); the Theorist's three tools; the seal failing at −1,420 m restarts S2 with DEBT carried; the confirm re-read switches to four failure streams; after the fix the Navigator's viewport doubles once and the Synaesthete's flare settles at a floor.
+- **S5**: the Theorist runs three trials. The Navigator commits by holding a question for one second, so the server knows the commit in advance and stamps the console reply 300 ms (trial 1) and 460 ms (trial 2) before it. Trial 3 is the control: she asks nothing and the server picks the moment she would have decided. The Synaesthete sees her mind-shape build toward the commit and marks it; a mark within ±150 ms is conclusive. Two or more conclusive trials let the Theorist log anomaly or artifact; fewer is logged as noise. Overlay focus held through all three trials costs the Synaesthete +1.
+- **S7**: the demonstration (pulse–pause–pulse on the beat schedule, visual pulse and 20 ms haptic, never audio); the Theorist's three phrasings; the Task 1 consent act for all three seats with the window closing on the third missed beat; "again" once from the Synaesthete; the Navigator's taps pinch the Task 2b streams toward one chord; the Synaesthete sees the crew's taps in one colour when all hit and three when not. A clean beat with the clean phrasing dims every screen by 0.35 (the reply), shows Chen's line, and adds TRUST +3; a conditional phrasing lands the beat but is answered with silence. Either way the act firing costs DEBT +1 all round. A second failed window is blackout and the episode ends on an unanswered knock.
+
+### Done-criteria
+
+| Criterion | Status | Evidence |
+|---|---|---|
+| Three browser contexts complete S7 with a scripted clean beat (§7) | met | `apps/web/e2e/s7.spec.ts`: lobby → S2 → interlude → S5 (two conclusive trials and the control) → S7 with the clean phrasing; taps scheduled in-page at each client's own act beat times; end card "answered", consent "clean", lights dimmed on all three; 55–57 s at `SCENE_PACE=10` |
+| Scenes assembled from Task 1 and Task 2 components | met | the consent act, beat schedule and scoring (Task 1); the Navigator's read, Synaesthete flare, Gray-Scott field and DEBT (Task 2); differential-growth streams with convergence (Task 2b) |
+| Scripted content from the design doc | met, with written lines flagged | the S2 line, telemetry, tools and fail depth; the S5 timing and the control trial; the S7 clean phrasing, the reply and Chen's line are verbatim. Lines written for the slice are listed below |
+| Server owns scene progression; no client authority | met | `apps/party/test/scenes.test.ts`: only the Theorist begins (and only with three seats), only the Synaesthete calls again, intents from a connection without that cid are dropped, the pace is a host var no message can change |
+| A rendered screenshot of each visual in its working state | met | `s2-navigator.png`, `s2-theorist.png`, `s5-theorist.png`, `s5-synaesthete.png`, three mid-act `s7-*.png` taken in parallel, `end-theorist.png` |
+| typecheck, lint, unit, e2e green | met locally | unit tests: protocol 49, party 42 (14 for the scenes), motion 17, sim 22; e2e 3 specs |
+| Real phones | **not run** | see "For the design side" |
+
+### Decisions taken (approved plan; confirm or overrule)
+
+1. **S2's read costs +1**, the scene's own cost line, not the 0.5 of a reflex read in §1. DEBT is an integer on the wire and reflex reads were out of Task 2.
+2. **S7 window**: three missed beats close it, with the 12-beat cap as backstop; the Synaesthete's "again" opens one more window. `act.ts` gained an optional `maxMisses`; Task 1's behaviour is unchanged without it.
+3. **DEBT +1 all round** is charged when the act fires, not per attempt.
+4. **The confirm re-read**: safe 0.92 at 660 000 ms and four failures at 0.02 / 0.98 at 89 000 ms.
+5. **S5 commit by a one-second hold** on the question, so the server knows the commit before it lands and the reply can precede it. A release before the second is a cancel.
+6. **Pace**: descent, approach, docking, diagnostic and interlude durations divide by the host var `SCENE_PACE` (default 1; the e2e run sets 10). The S5 trial timings and every beat literal are never paced.
+7. **No Rive assets**: wheels, waveform, trial lines and cards are plain DOM/SVG.
+
+### Content written for the slice (design side to replace or approve)
+
+The Navigator's three revealing S2 lines; the Synaesthete's three S2 options; the Theorist's tool labels; the two interlude cards; ten S5 questions (two per kind per trial); the two conditional S7 phrasings ("…if it is safe", "…once"); the end-card lines. All in `apps/party/src/core/ep1.ts` or the scene components.
+
+### Bugs found by the e2e run, fixed
+
+- A Synaesthete mark a few ms **before** the commit was recorded but never closed the trial until the 15 s timeout. The trial now closes when the commit lands; unit test added.
+- The Synaesthete's Navigator blob sat under the S5/S7 controls; the blob ring is raised in those scenes.
+- The Navigator's S7 field still showed the S2 stream labels; labels are hidden in tap mode (S7 is the collapse, not a read).
+- The first S2 timing (a linear 120 s descent) gave the crew about three seconds between the prompt and the seal failing; the three-phase descent gives them forty (four at test pace).
+
+### For the design side
+
+- **The three-phone run.** Deploy the Worker (`pnpm --filter @lsp/party deploy:party`) after merging; the site redeploys on its own. One crew plays the episode on three phones. The number that matters is whether S7 lands a clean beat at ±150 ms, and in how many windows: it is the first in-game measurement of the open window decision (Task 1 measured 15/19 beats with three devices).
+- Approve or replace the written content above.
+- The slice's own done-criteria (design §4: two outside testers ask about the horizon, argue about the Ledger, feel the S7 beat land) mention S3 and S4, which are cards here, not scenes. Confirm the testers should be judged on S2/S5/S7 only.
