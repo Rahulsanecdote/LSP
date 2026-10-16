@@ -149,7 +149,7 @@ export function SynaestheteOverlay({ snap, floor = 0, commitAtLocal = null, onFo
         </div>
       )}
       {children && (
-        <div data-scene-ui style={{ position: "absolute", left: 0, right: 0, bottom: 64, top: 48, pointerEvents: "none", display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
+        <div data-scene-ui style={{ position: "absolute", left: 0, right: 0, bottom: 72, top: 48, pointerEvents: "none", display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
           {children}
         </div>
       )}
@@ -160,10 +160,10 @@ export function SynaestheteOverlay({ snap, floor = 0, commitAtLocal = null, onFo
         data-reading={reading ? "1" : "0"}
         data-branchset={snap?.branchSet ? "1" : "0"}
         data-sim={sim ? `${sim.type}:${sim.complete ? "ok" : "incomplete"}` : ""}
-        style={{ position: "absolute", left: 16, right: 16, bottom: 14, pointerEvents: "none", fontSize: 12, color: "#b7b9c0", display: "flex", justifyContent: "space-between", gap: 12 }}
+        style={{ position: "absolute", left: 16, right: 16, bottom: 14, pointerEvents: "none", display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12 }}
       >
-        <span data-testid="caption">{caption !== undefined && caption !== null ? caption : !ready ? "connecting…" : reading ? `${snap?.activeRead?.label ?? "someone"} is reading` : `${clients.length} in the crew`}</span>
-        <span data-testid="diag" style={{ fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>
+        <span data-testid="caption" className="promptline">{caption !== undefined && caption !== null ? caption : !ready ? "connecting…" : reading ? `${snap?.activeRead?.label ?? "someone"} is reading` : `${clients.length} in the crew`}</span>
+        <span data-testid="diag" className="diagline" style={{ whiteSpace: "nowrap" }}>
           {fps} fps · flare {flareShown.toFixed(2)}
           {sim ? ` · sim ${SIM_SIZE}² ${sim.type}${sim.complete ? "" : " (incomplete)"}` : ""}
           {snap?.lastReadLatencyMs !== null && snap?.lastReadLatencyMs !== undefined ? ` · evt ${snap.lastReadLatencyMs.toFixed(0)} ms` : ""}

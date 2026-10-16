@@ -133,6 +133,7 @@ test("three contexts play S2, S5 and S7, and the clean beat lands", async ({ bro
 
   // ---- lobby → S2: only the Theorist can begin, once all three seats are filled
   await expect(theo.getByTestId("begin")).toBeEnabled({ timeout: 10_000 });
+  await theo.screenshot({ path: "test-results/lobby-theorist.png", animations: "disabled" });
   await theo.getByTestId("begin").click();
   for (const p of [nav, syn, theo]) await expect(scene(p)).toHaveAttribute("data-scene", "s2", { timeout: 10_000 });
 
@@ -144,10 +145,14 @@ test("three contexts play S2, S5 and S7, and the clean beat lands", async ({ bro
   await expect(nav.getByTestId("line-humor-me")).toBeVisible({ timeout: 30_000 }); // the reflex prompt at −1,380 m
   await nav.getByTestId("line-humor-me").click();
   await expect(theo.getByTestId("comms")).toContainText("humor me");
-  await nav.screenshot({ path: "test-results/s2-navigator.png" });
+  await expect(nav.getByTestId("line-chosen")).toContainText("humor me");
+  // cards fade in as they surface; finish the fade so the record shows the settled screen
+  await nav.screenshot({ path: "test-results/s2-navigator.png", animations: "disabled" });
   await theo.screenshot({ path: "test-results/s2-theorist.png" });
 
   // ---- the interlude cards, then S5
+  await expect(theo.getByTestId("interlude")).toBeVisible({ timeout: 40_000 });
+  await theo.screenshot({ path: "test-results/interlude-theorist.png", animations: "disabled" });
   await expect(scene(theo)).toHaveAttribute("data-scene", "s5", { timeout: 40_000 });
   await theo.getByTestId("advance").click(); // trial 1
   for (const [i, q] of [

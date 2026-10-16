@@ -8,8 +8,9 @@ export function Interlude({ scene }: { scene: SceneView }) {
   if (!card) return null;
   return (
     <main className="interlude" data-testid="interlude" data-index={card.index}>
-      <div>
+      <div key={card.index}>
         <h1>{card.title}</h1>
+        <span className="rule" aria-hidden />
         <p>{card.text}</p>
       </div>
     </main>

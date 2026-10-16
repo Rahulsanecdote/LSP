@@ -6,7 +6,7 @@ import { Ledger } from "@/components/instruments/Ledger";
 import { NavigatorRead } from "@/components/instruments/NavigatorRead";
 import { SynaestheteOverlay } from "@/components/instruments/SynaestheteOverlay";
 import type { BeatClient, BeatClientSnapshot } from "@/lib/beatClient";
-import { Debts, Wheel, roomNow } from "./common";
+import { Debts, ROLE_NAMES, Said, Wheel, roomNow } from "./common";
 
 /** How far the flare settles after the fix: "not fully fading" (design S2, horror beat). */
 const AFTER_FIX_FLOOR = 0.18;
@@ -37,22 +37,26 @@ export function S2Seal({ snap, client, role, scene }: { snap: BeatClientSnapshot
         <NavigatorRead snap={snap} client={client} prompt={prompt} doubled={doubled}>
           <div className="scene-ui" data-prompted={s2.prompted ? "1" : "0"}>
             {s2.privateQuestion && (
-              <div className="card" data-testid="private">
-                <span className="muted">Chen, private channel:</span> “{s2.privateQuestion}”
+              <div className="card">
+                <Said who="Chen · private channel" role="synaesthete" testId="private">
+                  “{s2.privateQuestion}”
+                </Said>
               </div>
             )}
             {s2.prompted && s2.line === null && s2.lines && (
               <>
-                <div className="card muted" style={{ fontSize: 12 }}>Tell the crew. Say what you need to say.</div>
-                <Wheel options={s2.lines} chosen={s2.line ?? null} onPick={(id) => client.current?.choose("s2", "nav-line", id)} testPrefix="line" />
+                <div className="card note">Tell the crew. Say what you need to say.</div>
+                <Wheel options={s2.lines} chosen={s2.line ?? null} onPick={(id) => client.current?.choose("s2", "nav-line", id)} testPrefix="line" speech />
               </>
             )}
             {s2.line !== null && s2.lines && (
-              <div className="card" data-testid="line-chosen">
-                <span className="muted">You:</span> “{s2.lines.find((l) => l.id === s2.line)?.text}”
+              <div className="card">
+                <Said who="You, on comms" role="navigator" testId="line-chosen">
+                  “{s2.lines.find((l) => l.id === s2.line)?.text}”
+                </Said>
               </div>
             )}
-            {s2.fixed && <div className="card muted" style={{ fontSize: 12 }}>Seal 4 holds. {depthText}.</div>}
+            {s2.fixed && <div className="card tool-state ok">Seal 4 holds · {depthText}</div>}
           </div>
         </NavigatorRead>
       );
@@ -63,13 +67,14 @@ export function S2Seal({ snap, client, role, scene }: { snap: BeatClientSnapshot
           <div className="scene-ui">
             {s2.choice === null && s2.choices && (
               <>
-                <div className="card muted" style={{ fontSize: 12 }}>You saw her flare before she spoke. Private channels are never private from the Ledger.</div>
+                <div className="card note">You saw her flare before she spoke. Private channels are never private from the Ledger.</div>
                 <Wheel options={s2.choices} chosen={null} onPick={(id) => client.current?.choose("s2", "syn-choice", id)} testPrefix="syn" />
               </>
             )}
             {s2.choice !== null && s2.choices && (
-              <div className="card" data-testid="syn-chosen">
-                {s2.choices.find((c) => c.id === s2.choice)?.text}
+              <div className="card note" data-testid="syn-chosen">
+                <span className="eyebrow">You chose</span>
+                <div style={{ marginTop: 4, color: "var(--ink)" }}>{s2.choices.find((c) => c.id === s2.choice)?.text}</div>
               </div>
             )}
           </div>
@@ -78,35 +83,50 @@ export function S2Seal({ snap, client, role, scene }: { snap: BeatClientSnapshot
     case "theorist": {
       const diagLeft = s2.diagnosticEndsAt !== null && s2.diagnosticEndsAt !== undefined && now !== null ? Math.max(0, s2.diagnosticEndsAt - now) : null;
       return (
-        <main style={{ display: "flex", flexDirection: "column", gap: 12, paddingTop: 40 }}>
-          <div className="row" style={{ justifyContent: "space-between" }}>
-            <div className="kv" style={{ flex: 1 }}>
+        <main style={{ display: "flex", flexDirection: "column", gap: 12, paddingTop: 44 }}>
+          <div className="readouts">
+            <div className="kv">
               <div className="k">Depth</div>
               <div className="v" data-testid="depth">{depthText}</div>
             </div>
-            <div className="kv" style={{ flex: 1 }} data-testid="telemetry">
-              <div className="k">Seal {s2.telemetry?.seal ?? 4}</div>
+            <div className="kv" data-testid="telemetry">
+              <div className="k">Seal {s2.telemetry?.seal ?? 4} · differential</div>
               <div className="v">
                 {s2.telemetry?.differentialKPa ?? 0.3} kPa <small>{s2.telemetry?.tolerance ?? "inside tolerance"}</small>
               </div>
             </div>
           </div>
           <Debts debts={scene.debts} />
-          <div className="panel" data-testid="comms" style={{ fontSize: 14, minHeight: 44 }}>
-            {(s2.comms ?? []).length === 0 ? <span className="muted">Comms quiet.</span> : (s2.comms ?? []).map((c, i) => <div key={i}>{c}</div>)}
+          <div className="panel" data-testid="comms" style={{ minHeight: 44, display: "grid", gap: 10 }}>
+            <span className="eyebrow">Comms</span>
+            {(s2.comms ?? []).length === 0 ? <span className="muted note">Quiet.</span> : (s2.comms ?? []).map((c, i) => <CommsLine key={i} text={c} />)}
           </div>
           {s2.tools && (
             <Wheel options={s2.tools} chosen={s2.tool ?? null} onPick={(id) => client.current?.choose("s2", "tool", id)} testPrefix="tool" disabled={s2.fixed} />
           )}
           {diagLeft !== null && !s2.fixed && (
-            <div className="muted" data-testid="diagnostic" style={{ fontSize: 13 }}>
-              Diagnostic running: {(diagLeft / 1000).toFixed(0)} s. Descent paused.
+            <div className="tool-state" data-testid="diagnostic" style={{ color: "var(--warn)" }}>
+              Diagnostic running · {(diagLeft / 1000).toFixed(0)} s · descent paused
             </div>
           )}
-          {s2.fixed && <div style={{ color: "var(--hit)", fontSize: 13 }} data-testid="fixed">Seal 4 holds.</div>}
+          {s2.fixed && <div className="tool-state ok" data-testid="fixed">Seal 4 holds.</div>}
           <Ledger log={scene.log} />
         </main>
       );
     }
   }
+}
+
+/** A comms line arrives as `Name: "words"`; the speaker goes to the label, the words to the serif. */
+function CommsLine({ text }: { text: string }) {
+  const m = /^([A-Z][a-z]+)( \([^)]*\))?: (.*)$/s.exec(text);
+  const name = m?.[1];
+  const words = m?.[3];
+  const role = name ? (Object.keys(ROLE_NAMES) as Role[]).find((r) => ROLE_NAMES[r] === name) : undefined;
+  if (!name || words === undefined || !role) return <div className="note">{text}</div>;
+  return (
+    <Said who={`${name}${m?.[2] ?? ""}`} role={role}>
+      {words.replace(/^"(.*)"$/s, "“$1”")}
+    </Said>
+  );
 }
