@@ -1,12 +1,15 @@
 "use client";
 
 import { S5_COMMIT_HOLD_MS, type Role, type S5TrialView, type SceneView } from "@lsp/protocol";
-import { useCallback, useRef, type PointerEvent as ReactPointerEvent, type RefObject } from "react";
+import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type RefObject } from "react";
 import { Ledger } from "@/components/instruments/Ledger";
 import { NavigatorRead } from "@/components/instruments/NavigatorRead";
 import { SynaestheteOverlay } from "@/components/instruments/SynaestheteOverlay";
 import type { BeatClient, BeatClientSnapshot } from "@/lib/beatClient";
 import { Debts, Waveform, roomNow, toLocal } from "./common";
+
+/** how long the "too quick" note stays after a press released before the commit */
+const TOO_QUICK_NOTE_MS = 2_500;
 
 export function S5PointThree({ snap, client, role, scene }: { snap: BeatClientSnapshot | null; client: RefObject<BeatClient | null>; role: Role; scene: SceneView }) {
   const s5 = scene.s5;
@@ -113,11 +116,26 @@ function TrialLine({ t }: { t: S5TrialView }) {
 function NavigatorS5({ snap, client, scene, trial }: { snap: BeatClientSnapshot | null; client: RefObject<BeatClient | null>; scene: SceneView; trial: S5TrialView | null }) {
   const s5 = scene.s5;
   const holdingId = useRef<string | null>(null);
+  // whether the current trial had committed when the finger lifted: a lift before it is too quick
+  const committedRef = useRef(false);
+  committedRef.current = trial?.committed ?? false;
+  const [tooQuick, setTooQuick] = useState(false);
+  const tooQuickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (tooQuickTimer.current) clearTimeout(tooQuickTimer.current);
+  }, []);
   const down = useCallback(
     (e: ReactPointerEvent<HTMLButtonElement>, id: string) => {
       e.preventDefault();
       e.stopPropagation();
+      // keep the hold on this button if the finger drifts off it (a drift used to cancel)
+      try {
+        e.currentTarget.setPointerCapture(e.pointerId);
+      } catch {
+        // a synthetic pointer (the e2e) has nothing to capture
+      }
       holdingId.current = id;
+      setTooQuick(false);
       client.current?.choose("s5", "question", id, "start");
     },
     [client],
@@ -127,14 +145,20 @@ function NavigatorS5({ snap, client, scene, trial }: { snap: BeatClientSnapshot 
       e.preventDefault();
       const id = holdingId.current;
       holdingId.current = null;
+      if (!id) return;
       // released before the commit: the server treats this as a cancel; after it, it is ignored
-      if (id) client.current?.choose("s5", "question", id, "cancel");
+      client.current?.choose("s5", "question", id, "cancel");
+      if (!committedRef.current) {
+        setTooQuick(true);
+        if (tooQuickTimer.current) clearTimeout(tooQuickTimer.current);
+        tooQuickTimer.current = setTimeout(() => setTooQuick(false), TOO_QUICK_NOTE_MS);
+      }
     },
     [client],
   );
   if (!s5) return null;
   const pending = trial?.commitAt !== null && trial?.commitAt !== undefined && !trial.committed;
-  const prompt = !s5.started ? "the console registers an EM event" : trial && !trial.done ? (trial.kind === "control" ? "ask nothing. Let the moment pass." : trial.committed ? "committed" : pending ? "committing…" : `trial ${trial.index + 1} — hold a question to think it`) : "waiting for Sarah";
+  const prompt = !s5.started ? "the console registers an EM event" : trial && !trial.done ? (trial.kind === "control" ? "ask nothing. Let the moment pass." : trial.committed ? "committed" : pending ? "committing…" : `trial ${trial.index + 1} — press and hold a question until the bar fills`) : "waiting for Sarah";
   return (
     <NavigatorRead snap={snap} client={client} prompt={prompt}>
       <div className="scene-ui">
@@ -150,15 +174,18 @@ function NavigatorS5({ snap, client, scene, trial }: { snap: BeatClientSnapshot 
                 onPointerDown={(e) => down(e, q.id)}
                 onPointerUp={up}
                 onPointerCancel={up}
-                onPointerLeave={(e) => {
-                  if (holdingId.current === q.id) up(e);
-                }}
-                style={{ position: "relative", overflow: "hidden" }}
+                onContextMenu={(e) => e.preventDefault()}
+                style={{ position: "relative", overflow: "hidden", touchAction: "none", userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none" }}
               >
                 {q.text}
                 {s5.holdingQuestion === q.id && pending && <span aria-hidden style={{ position: "absolute", left: 0, bottom: 0, height: 3, width: "100%", background: "var(--accent)", transformOrigin: "left", animation: `lsp-grow ${S5_COMMIT_HOLD_MS}ms linear forwards` }} />}
               </button>
             ))}
+          </div>
+        )}
+        {trial && !trial.done && trial.kind === "question" && !trial.committed && (
+          <div className="card muted" data-testid="hold-hint" style={{ fontSize: 13 }}>
+            {tooQuick ? "Too quick: hold until the bar fills." : `Hold ${S5_COMMIT_HOLD_MS / 1000} s: that is Elena thinking it.`}
           </div>
         )}
         {trial && trial.kind === "control" && !trial.done && <div className="card muted">Sarah's control: think nothing. Let the knock come to an empty room.</div>}

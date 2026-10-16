@@ -155,6 +155,17 @@ test("three contexts play S2, S5 and S7, and the clean beat lands", async ({ bro
     [1, "q2-where"],
   ] as const) {
     await expect(nav.getByTestId(`q-${q}`)).toBeVisible({ timeout: 10_000 });
+    if (i === 0) {
+      // the hold is spelled out (first three-phone run: the Navigator tapped instead of holding)
+      await expect(nav.getByTestId("hold-hint")).toContainText("Hold 1 s");
+      await nav.screenshot({ path: "test-results/s5-navigator-hold.png" });
+      // a press let go at once is a cancel: the note says so and no commit reaches Chen
+      await nav.getByTestId(`q-${q}`).dispatchEvent("pointerdown", touch);
+      await nav.getByTestId(`q-${q}`).dispatchEvent("pointerup", touch);
+      await expect(nav.getByTestId("hold-hint")).toContainText("Too quick");
+      await expect(syn.getByTestId("tap")).toHaveAttribute("data-commit-local", "");
+      await nav.screenshot({ path: "test-results/s5-navigator-too-quick.png" });
+    }
     // Chen watches her mind-shape build and marks the commit
     await armMark(syn);
     await nav.getByTestId(`q-${q}`).dispatchEvent("pointerdown", touch);

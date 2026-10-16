@@ -1,6 +1,6 @@
 "use client";
 
-import { ACT_BEATS_REQUIRED, BEAT_INTERVAL_MS, beatTime, type Role, type SceneView } from "@lsp/protocol";
+import { ACT_BEATS_REQUIRED, BEAT_INTERVAL_MS, S7_MAX_MISSES, beatTime, type Role, type SceneView } from "@lsp/protocol";
 import type { RefObject } from "react";
 import { Ledger } from "@/components/instruments/Ledger";
 import { NavigatorRead } from "@/components/instruments/NavigatorRead";
@@ -31,7 +31,7 @@ export function S7Consent({ snap, client, role, scene }: { snap: BeatClientSnaps
             <div className="card">{wave}</div>
             {act && (
               <div className="card muted" data-testid="run" style={{ fontSize: 12 }}>
-                run {s7.run}/{ACT_BEATS_REQUIRED} · misses {s7.missed}
+                run {s7.run}/{ACT_BEATS_REQUIRED} · misses {s7.missed}/{S7_MAX_MISSES}, counted from the first tap
               </div>
             )}
           </div>
@@ -104,7 +104,7 @@ export function S7Consent({ snap, client, role, scene }: { snap: BeatClientSnaps
             </button>
             {act && (
               <div className="muted" data-testid="run" style={{ fontSize: 12 }}>
-                window {s7.window} · run {s7.run}/{ACT_BEATS_REQUIRED} · misses {s7.missed}
+                window {s7.window} · run {s7.run}/{ACT_BEATS_REQUIRED} · misses {s7.missed}/{S7_MAX_MISSES}, counted from the first tap
               </div>
             )}
           </div>
