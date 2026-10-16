@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  ACT_MAX_BEATS,
   BEAT_CLOSE_GRACE_MS,
   INTERLUDE_MS,
   S2_APPROACH_MS,
@@ -369,6 +370,43 @@ describe("scenes (Task 3)", () => {
     for (const r of ["navigator", "synaesthete", "theorist"] as Role[]) expect(core.state.scene.debts[r]).toBe(debtsBefore[r] + 1);
     expect(core.state.debt).toBe(core.state.scene.debts.navigator);
     expect(viewFor(out, "theorist")?.end).toEqual({ ending: "answered", classification: "anomaly", consent: "clean" });
+  });
+
+  it("S7: the window waits for the crew's first tap (first three-phone run), and closes at the beat cap if nobody taps", () => {
+    const { clock, core, schedule } = crew();
+    reachS7(core, clock);
+    const s7 = core.state.scene.s7;
+    if (!s7) throw new Error("no s7");
+    advanceTo(core, clock, beatTime(schedule, s7.demoStartBeat + S7_DEMO_BEATS) + 1);
+    send(core, "theorist", { t: "choose", sceneId: "s7", promptId: "phrasing", optionId: "clean" });
+    let act = core.state.activeAct;
+    if (!act) throw new Error("no act");
+    // four beats pass while the crew finds the rhythm: on the phones this closed the window
+    let out = advanceTo(core, clock, beatTime(schedule, act.startBeat + 3) + BEAT_CLOSE_GRACE_MS + 1);
+    expect(msgs(out, "actResult")).toHaveLength(0);
+    expect(core.state.scene.s7?.phase).toBe("act");
+    expect(viewFor(out, "navigator")?.s7?.missed ?? 0).toBe(0);
+    for (const b of [act.startBeat + 4, act.startBeat + 5, act.startBeat + 6]) {
+      everyoneTaps(core, schedule, b);
+      out = advanceTo(core, clock, beatTime(schedule, b) + BEAT_CLOSE_GRACE_MS + 1);
+    }
+    expect(msgs(out, "actResult")[0]).toMatchObject({ ok: true });
+    expect(core.state.scene.s7?.outcome).toBe("clean");
+
+    // a crew that never taps: the window stays open to the 12-beat cap, then closes
+    const second = crew();
+    reachS7(second.core, second.clock);
+    const s7b = second.core.state.scene.s7;
+    if (!s7b) throw new Error("no s7");
+    advanceTo(second.core, second.clock, beatTime(second.schedule, s7b.demoStartBeat + S7_DEMO_BEATS) + 1);
+    send(second.core, "theorist", { t: "choose", sceneId: "s7", promptId: "phrasing", optionId: "clean" });
+    act = second.core.state.activeAct;
+    if (!act) throw new Error("no act");
+    out = advanceTo(second.core, second.clock, beatTime(second.schedule, act.startBeat + ACT_MAX_BEATS - 2) + BEAT_CLOSE_GRACE_MS + 1);
+    expect(msgs(out, "actResult")).toHaveLength(0);
+    out = advanceTo(second.core, second.clock, beatTime(second.schedule, act.startBeat + ACT_MAX_BEATS - 1) + BEAT_CLOSE_GRACE_MS + 1);
+    expect(msgs(out, "actResult")[0]).toMatchObject({ ok: false });
+    expect(second.core.state.scene.s7?.phase).toBe("between");
   });
 
   it("S7: a conditional phrasing lands the beat but is answered with silence", () => {

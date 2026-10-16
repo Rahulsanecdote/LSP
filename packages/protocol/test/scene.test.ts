@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  ACT_MAX_BEATS,
   BEAT_WINDOW_MS,
   S2_APPROACH_MS,
   S2_DEPTH_M,
@@ -15,11 +16,13 @@ import {
   evaluate,
   closeBeat,
   applyTap,
+  missedBeats,
   parseClientMessage,
   parseServerMessage,
   s5CanClassify,
   startAct,
   trialConclusive,
+  type ActState,
   type SceneView,
 } from "../src/index";
 
@@ -54,25 +57,44 @@ describe("scene rules (Task 3)", () => {
     expect(S7_PHRASINGS.filter((p) => p === "clean")).toHaveLength(1);
   });
 
-  it("an act with maxMisses closes on the third missed beat; without it Task 1 behaviour holds", () => {
+  it("an act with maxMisses closes on the third missed beat after the first tap; without it Task 1 behaviour holds", () => {
     const base = { actId: "a", roles: ["navigator" as const], startBeat: 0, participants: [{ cid: "n", role: "navigator" as const }] };
+    const tap = (s: ActState, beatIndex: number, hit = true) => applyTap(s, { cid: "n", role: "navigator", beatIndex, deltaMs: hit ? 5 : 200, hit }).state;
+    // beats before anyone taps are not misses: the window waits for the crew
     let a = startAct({ ...base, maxMisses: 3 });
-    let b = startAct(base);
-    for (let i = 0; i < 3; i++) {
-      a = closeBeat(a, i); // nobody tapped: a miss
-      b = closeBeat(b, i);
-    }
+    for (let i = 0; i < 4; i++) a = closeBeat(a, i);
+    expect(missedBeats(a)).toBe(0);
+    expect(evaluate(a)).toBe("open");
+    // the first tap starts the count, even when it misses; a hit between misses still counts
+    a = tap(a, 4, false);
+    a = closeBeat(a, 4);
+    a = tap(a, 5);
+    a = closeBeat(a, 5);
+    a = closeBeat(a, 6);
+    expect(missedBeats(a)).toBe(2);
+    expect(evaluate(a)).toBe("open");
+    a = closeBeat(a, 7);
     expect(evaluate(a)).toBe("failed");
+    // Task 1 behaviour: no miss limit
+    let b = startAct(base);
+    for (let i = 0; i < 3; i++) b = closeBeat(b, i);
     expect(evaluate(b)).toBe("open");
-    // a hit between misses still counts toward the miss total
-    let c = startAct({ ...base, maxMisses: 3 });
-    c = closeBeat(c, 0);
-    c = applyTap(c, { cid: "n", role: "navigator", beatIndex: 1, deltaMs: 5, hit: true }).state;
-    c = closeBeat(c, 1);
-    c = closeBeat(c, 2);
-    expect(evaluate(c)).toBe("open");
-    c = closeBeat(c, 3);
-    expect(evaluate(c)).toBe("failed");
+  });
+
+  it("a crew that starts late still lands the act; a crew that never taps fails at the beat cap", () => {
+    const base = { actId: "a", roles: ["navigator" as const], startBeat: 0, participants: [{ cid: "n", role: "navigator" as const }], maxMisses: 3 };
+    let late = startAct(base);
+    for (let i = 0; i < 5; i++) late = closeBeat(late, i);
+    for (const i of [5, 6, 7]) {
+      late = applyTap(late, { cid: "n", role: "navigator", beatIndex: i, deltaMs: 5, hit: true }).state;
+      late = closeBeat(late, i);
+    }
+    expect(evaluate(late)).toBe("ok");
+    let never = startAct(base);
+    for (let i = 0; i < ACT_MAX_BEATS - 1; i++) never = closeBeat(never, i);
+    expect(evaluate(never)).toBe("open");
+    never = closeBeat(never, ACT_MAX_BEATS - 1);
+    expect(evaluate(never)).toBe("failed");
   });
 
   it("scene views and intents round-trip through the wire parsers", () => {
