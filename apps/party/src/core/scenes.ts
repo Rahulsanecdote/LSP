@@ -543,7 +543,7 @@ export class SceneHost {
     if (now >= t.endsAt) {
       if (t.conclusive === null) {
         t.conclusive = false;
-        this.log("window", `Trial ${t.index + 1}: no tap. Inconclusive.`);
+        this.log("window", t.commitAt === null ? `Trial ${t.index + 1}: Elena committed no question. Inconclusive.` : `Trial ${t.index + 1}: no mark. Inconclusive.`);
       }
       out.push(...this.finishTrialIfDue(t, true));
       return out;

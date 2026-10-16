@@ -9,6 +9,8 @@ import { ROLES } from "./messages";
  * - A listed role that does not tap on a beat has missed it (decided when the beat closes).
  * - The act is `ok` as soon as the last `beatsRequired` CLOSED beats were all-hit.
  * - The act fails once `maxBeats` beats have closed without that happening.
+ * - With `maxMisses` (Task 3, S7), it also fails once that many closed beats were missed, counted
+ *   from the first beat anyone tapped. Before the first tap no beat counts as missed.
  * - Taps count only from the participants recorded at actStart (by cid) and only for listed
  *   roles. A participant who reconnects keeps its cid, so reconnect never resets anyone.
  * - A tap on a beat that has already closed is ignored: the miss stands and the tap is never
@@ -40,7 +42,7 @@ export interface ActState {
   startBeat: number;
   beatsRequired: number;
   maxBeats: number;
-  /** Task 3: the act also fails once this many closed beats were missed (any role); null = never */
+  /** Task 3: the act also fails once this many closed beats were missed (any role), counted from the first tap; null = never */
   maxMisses: number | null;
   /** beats keyed by beatIndex (as string, for JSON round-tripping) */
   beats: Readonly<Record<string, ActBeat>>;
@@ -165,10 +167,25 @@ export function closedBeats(state: ActState): number {
   return state.nextToClose - state.startBeat;
 }
 
-/** Closed beats on which at least one listed role missed. */
+/** First beat holding a counted tap from any role (hit or miss), or null before anyone tapped. */
+export function firstTappedBeat(state: ActState): number | null {
+  for (let i = state.startBeat; i < state.startBeat + state.maxBeats; i++) {
+    const beat = state.beats[String(i)];
+    if (beat && Object.keys(beat.deltas).length > 0) return i;
+  }
+  return null;
+}
+
+/**
+ * Closed beats on which at least one listed role missed, counted from the crew's first tap:
+ * the beats before anyone has tapped are the crew finding the rhythm, not misses (Task 3, first
+ * three-phone run: counted from the act's first beat, the window closed 2.3 s after it opened).
+ */
 export function missedBeats(state: ActState): number {
+  const first = firstTappedBeat(state);
+  if (first === null) return 0;
   let n = 0;
-  for (let i = state.startBeat; i < state.nextToClose; i++) {
+  for (let i = first; i < state.nextToClose; i++) {
     const beat = state.beats[String(i)];
     if (beat && beat.closed && !beatAllHit(state, beat)) n++;
   }
