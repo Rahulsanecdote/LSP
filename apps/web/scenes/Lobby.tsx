@@ -16,20 +16,24 @@ export function Lobby({ snap, client, role, scene }: { snap: BeatClientSnapshot 
   const present = new Set(scene?.present ?? []);
   const crew = (
     <div className="card" data-testid="crew-card">
-      <div style={{ fontSize: 11, color: "var(--ink-3)", textTransform: "uppercase", letterSpacing: ".06em" }}>Pre-dive · instrument check</div>
-      <div className="row" style={{ marginTop: 6, gap: 10 }}>
+      <div className="eyebrow">Pre-dive · instrument check</div>
+      <div className="roster">
         {ROLES.map((r) => (
-          <span key={r} style={{ color: present.has(r) ? "var(--hit)" : "var(--ink-3)" }}>
-            {present.has(r) ? "●" : "○"} {ROLE_NAMES[r]}
-          </span>
+          <div key={r} className="seat">
+            <span>
+              <span className="name">{ROLE_NAMES[r]}</span>
+              <span className="role">{r}</span>
+            </span>
+            <span className={`here ${present.has(r) ? "on" : "off"}`}>{present.has(r) ? "● aboard" : "○ waiting"}</span>
+          </div>
         ))}
       </div>
       {role === "theorist" ? (
-        <button type="button" className="primary" data-testid="begin" style={{ marginTop: 10, width: "100%" }} disabled={!ROLES.every((r) => present.has(r))} onClick={() => client.current?.continue("lobby")}>
+        <button type="button" className="primary" data-testid="begin" style={{ marginTop: 12, width: "100%" }} disabled={!ROLES.every((r) => present.has(r))} onClick={() => client.current?.continue("lobby")}>
           Begin the dive
         </button>
       ) : (
-        <div className="muted" style={{ marginTop: 8, fontSize: 12 }}>Sarah begins the dive when all three seats are filled.</div>
+        <div className="note" style={{ marginTop: 10 }}>Sarah begins the dive when all three seats are filled.</div>
       )}
     </div>
   );

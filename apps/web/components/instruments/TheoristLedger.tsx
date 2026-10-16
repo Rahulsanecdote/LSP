@@ -17,17 +17,17 @@ export function TheoristLedger({ snap, children }: { snap: BeatClientSnapshot | 
       {children && <div className="scene-ui" style={{ margin: 0 }}>{children}</div>}
       <div className="kv" style={{ textAlign: "center", padding: "28px 16px" }}>
         <div className="k">DEBT</div>
-        <div className="v" data-testid="debt" style={{ fontSize: 72, lineHeight: 1 }}>
+        <div className="v" data-testid="debt" style={{ fontSize: 72, lineHeight: 1, marginTop: 10 }}>
           {snap?.debt ?? 0}
         </div>
-        <div className="muted" style={{ marginTop: 10, fontSize: 13 }} data-testid="reading">
+        <div className="diagline" style={{ marginTop: 12 }} data-testid="reading">
           {!ready ? "connecting…" : reading ? `${reading.label} is reading…` : last?.phase === "end" ? `last read ${((last.durationMs ?? 0) / 1000).toFixed(1)} s${last.pastHorizon ? ", beyond the horizon, +2" : ", +1"}` : "no reads yet"}
         </div>
       </div>
-      <div className="panel" style={{ fontSize: 13, color: "var(--ink-2)" }}>
+      <div className="panel note">
         Every hold the Navigator makes costs one. Past the horizon it costs two. You see the cost, never the read.
       </div>
-      <p className="muted" style={{ fontSize: 12, textAlign: "center" }}>
+      <p className="diagline" style={{ textAlign: "center" }}>
         {snap?.lastReadLatencyMs !== null && snap?.lastReadLatencyMs !== undefined ? `event latency ${snap.lastReadLatencyMs.toFixed(0)} ms` : ""}
       </p>
     </main>

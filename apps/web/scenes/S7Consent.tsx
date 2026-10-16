@@ -6,7 +6,7 @@ import { Ledger } from "@/components/instruments/Ledger";
 import { NavigatorRead } from "@/components/instruments/NavigatorRead";
 import { SynaestheteOverlay } from "@/components/instruments/SynaestheteOverlay";
 import type { BeatClient, BeatClientSnapshot } from "@/lib/beatClient";
-import { Debts, Waveform, Wheel, roomNow } from "./common";
+import { Debts, Said, Waveform, Wheel, roomNow } from "./common";
 
 const CHEN_LINE = "It's conserving something.";
 
@@ -30,7 +30,7 @@ export function S7Consent({ snap, client, role, scene }: { snap: BeatClientSnaps
           <div className="scene-ui">
             <div className="card">{wave}</div>
             {act && (
-              <div className="card muted" data-testid="run" style={{ fontSize: 12 }}>
+              <div className="card diagline" data-testid="run">
                 run {s7.run}/{ACT_BEATS_REQUIRED} · misses {s7.missed}/{S7_MAX_MISSES}, counted from the first tap
               </div>
             )}
@@ -43,8 +43,10 @@ export function S7Consent({ snap, client, role, scene }: { snap: BeatClientSnaps
           <div className="scene-ui" style={{ alignItems: "center" }}>
             <div className="card" style={{ alignSelf: "stretch" }}>{wave}</div>
             {replied && (
-              <div className="card" data-testid="chen-line" style={{ alignSelf: "stretch" }}>
-                <span className="muted">You, before you can stop yourself:</span> “{CHEN_LINE}”
+              <div className="card" style={{ alignSelf: "stretch" }}>
+                <Said who="You, before you can stop yourself" role="synaesthete" testId="chen-line">
+                  “{CHEN_LINE}”
+                </Said>
               </div>
             )}
             {s7.againAvailable && (
@@ -72,21 +74,23 @@ export function S7Consent({ snap, client, role, scene }: { snap: BeatClientSnaps
       );
     case "theorist":
       return (
-        <main style={{ display: "flex", flexDirection: "column", gap: 12, paddingTop: 40 }}>
+        <main style={{ display: "flex", flexDirection: "column", gap: 12, paddingTop: 44 }}>
           <div className="panel">
-            <div style={{ fontSize: 11, color: "var(--ink-3)", textTransform: "uppercase", letterSpacing: ".06em" }}>{phaseText}</div>
+            <div className="eyebrow">{phaseText}</div>
             {wave}
           </div>
           <Debts debts={scene.debts} />
           {s7.phase === "phrasing" && s7.phrasings && (
             <>
-              <div className="muted" style={{ fontSize: 13 }}>Before you tap, choose what the act means. The Ancient answers conditions with silence.</div>
-              <Wheel options={s7.phrasings} chosen={s7.phrasing} onPick={(id) => client.current?.choose("s7", "phrasing", id)} testPrefix="phrasing" />
+              <div className="note">Before you tap, choose what the act means. The Ancient answers conditions with silence.</div>
+              <Wheel options={s7.phrasings} chosen={s7.phrasing} onPick={(id) => client.current?.choose("s7", "phrasing", id)} testPrefix="phrasing" speech />
             </>
           )}
           {s7.phrasing && s7.phrasings && (
-            <div className="panel" data-testid="phrasing-chosen" style={{ fontSize: 14 }}>
-              “{s7.phrasings.find((p) => p.id === s7.phrasing)?.text}”
+            <div className="panel">
+              <Said who="Sarah · the words" role="theorist" testId="phrasing-chosen">
+                “{s7.phrasings.find((p) => p.id === s7.phrasing)?.text}”
+              </Said>
             </div>
           )}
           <div className="tapwrap">
@@ -103,7 +107,7 @@ export function S7Consent({ snap, client, role, scene }: { snap: BeatClientSnaps
               TAP
             </button>
             {act && (
-              <div className="muted" data-testid="run" style={{ fontSize: 12 }}>
+              <div className="diagline" data-testid="run">
                 window {s7.window} · run {s7.run}/{ACT_BEATS_REQUIRED} · misses {s7.missed}/{S7_MAX_MISSES}, counted from the first tap
               </div>
             )}

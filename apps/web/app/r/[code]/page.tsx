@@ -67,6 +67,9 @@ export default function RoomPage() {
   return <Episode code={code} role={role} cidOverride={search.get("cid")} />;
 }
 
+/** The scene names on the console strip. */
+const SCENE_TITLES: Record<string, string> = { s2: "S2 seal", interlude: "interlude", s5: "S5 0.3 s", s7: "S7 consent", end: "end" };
+
 function Episode({ code, role, cidOverride }: { code: string; role: Role; cidOverride: string | null }) {
   const snapRef = useRef<BeatClientSnapshot | null>(null);
   // Beat cue (S7 only): a background pulse plus a 20 ms haptic, never audio; under 3 Hz.
@@ -92,12 +95,11 @@ function Episode({ code, role, cidOverride }: { code: string; role: Role; cidOve
   const act = actStartLocal(snap, client);
 
   const header = (
-    <div data-testid="conn" style={{ position: "fixed", top: 10, left: 16, right: 16, zIndex: 2, display: "flex", justifyContent: "space-between", fontSize: 12, color: "#7e818b", pointerEvents: "none" }}>
-      <span>
+    <div data-testid="conn" className="conn">
+      <span className="where" title={snap?.label ? `player ${snap.label}` : undefined}>
         <span className={`status ${snap?.connected ? "on" : "off"}`} />
-        {code} · {role}
-        {snap?.label ? ` · ${snap.label}` : ""}
-        {scene && scene.id !== "lobby" ? ` · ${scene.id.toUpperCase()}` : ""}
+        {code} · <span className="seat">{role}</span>
+        {scene && scene.id !== "lobby" ? ` · ${SCENE_TITLES[scene.id] ?? scene.id}` : ""}
       </span>
       <span data-testid="offset">{snap?.offset === null || snap?.offset === undefined ? "syncing…" : `offset ${snap.offset.toFixed(0)} ms`}</span>
     </div>

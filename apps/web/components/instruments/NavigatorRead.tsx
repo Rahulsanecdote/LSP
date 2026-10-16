@@ -198,15 +198,15 @@ export function NavigatorRead({ snap, client, mode = "read", converge = 0, promp
 
       {/* scene UI (Task 3): wheels and comms, above the field, below the diag line */}
       {children && (
-        <div data-scene-ui style={{ position: "absolute", left: 0, right: 0, bottom: 64, top: 48, pointerEvents: "none", display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
+        <div data-scene-ui style={{ position: "absolute", left: 0, right: 0, bottom: 72, top: 48, pointerEvents: "none", display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
           {children}
         </div>
       )}
 
       {/* prompt and diag line */}
-      <div style={{ position: "absolute", left: 16, right: 16, bottom: 14, pointerEvents: "none", fontSize: 12, color: "#b7b9c0", display: "flex", flexDirection: "column", gap: 4 }}>
-        <span data-testid="prompt">{prompt !== undefined && prompt !== null ? prompt : !ready ? "connecting…" : holding ? (pastHorizon ? "beyond the horizon — release costs double" : "reading") : "press and hold anywhere to read"}</span>
-        <span data-testid="diag" style={{ fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: "#7e818b" }}>
+      <div style={{ position: "absolute", left: 16, right: 16, bottom: 14, pointerEvents: "none", display: "flex", flexDirection: "column", gap: 5 }}>
+        <span data-testid="prompt" className="promptline">{prompt !== undefined && prompt !== null ? prompt : !ready ? "connecting…" : holding ? (pastHorizon ? "beyond the horizon — release costs double" : "reading") : "press and hold anywhere to read"}</span>
+        <span data-testid="diag" className="diagline" style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
           {fps} fps · hold {Math.round(heldMs)} ms → {(projectedMs / 1000).toFixed(1)} s · DEBT {snap?.debt ?? 0}
           {last?.phase === "end" ? ` · last ${last.durationMs?.toFixed(0)} ms ${last.pastHorizon ? "+2" : "+1"}` : ""}
           {snap?.lastReadLatencyMs !== null && snap?.lastReadLatencyMs !== undefined ? ` · evt ${snap.lastReadLatencyMs.toFixed(0)} ms` : ""}
