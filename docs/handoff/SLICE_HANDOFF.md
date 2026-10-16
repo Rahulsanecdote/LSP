@@ -668,6 +668,23 @@ Fixed earlier in the same run: the Synaesthete counted every player the room had
 6. **`?cid=` override** (PR 5) lets one browser hold three tabs as three players for the launcher's one-device mode; storage is untouched when it is present.
 7. **Room summary** (PR 7) now carries `debt`, `activeRead` and the last 50 reads so a device run can be read off the Worker after the fact; it is how the numbers above were taken.
 
+### Three-phone run 1 (room DEMO, deployed Worker, pace 1)
+
+The episode played to the end card: an unanswered knock, S5 logged as noise. Read from the room summary on the Worker:
+
+| Scene | What the server logged |
+| :--- | :--- |
+| S2 | The Navigator read 11 times on the way down (DEBT +17). Chen asked Elena privately; Sarah ran the diagnostic; the seal was fixed; the rig docked. |
+| S5 | No commit in trials 1 or 2, so Chen's three MARK taps in trial 2 counted for nothing. In the control (trial 3) Chen's mark came +7,802 ms after the commit. 0 of 3 conclusive → noise. |
+| S7 | The window closed 2.3 s after Sarah picked the clean words, and again 2.2 s after "again". No tap reached the server in either window. Blackout. |
+
+What it showed, and what changed:
+
+1. **S7 counted misses before anyone could tap.** The act's first beat lands about 0.5 s after the words, and every beat counted, so three misses arrived in about 1.6 s. The e2e never saw it because its taps were armed in advance. Decision (Rimuru): misses count from the crew's first tap. The window still closes on three misses, and the 12-beat cap still ends a window nobody starts. `missedBeats` in `act.ts` counts from the first beat that holds a counted tap. The rule is derived from the beats, so it needs no new state. Unit tests cover a late start and a crew that never taps; the S7 screen reads "misses n/3, counted from the first tap". The ±150 ms window and 520 ms beat are unchanged. This run scored no S7 taps, so it says nothing yet about the open window decision.
+2. **S5: the Navigator tapped the questions instead of holding them.** The prompt now says "press and hold a question until the bar fills", a standing hint reads "Hold 1 s: that is Elena thinking it", and a press let go early shows "Too quick: hold until the bar fills". The question buttons now take the read surface's touch guards: `touch-action: none`, no long-press menu or callout, pointer capture so a drifting finger no longer cancels. The e2e checks the hint and the too-quick note and screenshots both (`s5-navigator-hold.png`, `s5-navigator-too-quick.png`). The Ledger says "Elena committed no question" rather than "no tap" when that is what happened.
+3. **DEMO carried old DEBT.** The room had been used since Task 2, so the end card showed Navigator DEBT 163. Use a fresh room code for each run.
+4. **Open:** whether the Synaesthete can see the commit flare well enough to mark it. This run cannot tell (the crew isn't sure), and run 2 should watch for it.
+
 ### For the design side
 
 - Confirm which iPhone was the 16 Pro Max (both iPhones met 60 fps).
@@ -728,7 +745,7 @@ Written 2026-10-10. Status: **built; the §7 done-criterion is met in Playwright
 - **Per-role projection** (`packages/protocol/src/scene.ts`): each connection gets only what its seat may know. The Navigator's wheel never reaches the others; the Synaesthete never receives stream content (the e2e test still asserts it); the Theorist gets telemetry, the comms the others chose to send her, and the Ledger. Per-human DEBT is visible to all (design §0); TRUST is never sent to a client and appears only in the room summary.
 - **S2**: a three-phase descent (fast to −1,380 m, a forty-second approach to −1,420 m, docking); the reflex prompt at −1,380 m; the Navigator's four-line wheel (only "Sarah, run a seal diagnostic for me, humor me." does not reveal); the Synaesthete's three options (silence, the private question to Elena, a vouch to Sarah); the Theorist's three tools; the seal failing at −1,420 m restarts S2 with DEBT carried; the confirm re-read switches to four failure streams; after the fix the Navigator's viewport doubles once and the Synaesthete's flare settles at a floor.
 - **S5**: the Theorist runs three trials. The Navigator commits by holding a question for one second, so the server knows the commit in advance and stamps the console reply 300 ms (trial 1) and 460 ms (trial 2) before it. Trial 3 is the control: she asks nothing and the server picks the moment she would have decided. The Synaesthete sees her mind-shape build toward the commit and marks it; a mark within ±150 ms is conclusive. Two or more conclusive trials let the Theorist log anomaly or artifact; fewer is logged as noise. Overlay focus held through all three trials costs the Synaesthete +1.
-- **S7**: the demonstration (pulse–pause–pulse on the beat schedule, visual pulse and 20 ms haptic, never audio); the Theorist's three phrasings; the Task 1 consent act for all three seats with the window closing on the third missed beat; "again" once from the Synaesthete; the Navigator's taps pinch the Task 2b streams toward one chord; the Synaesthete sees the crew's taps in one colour when all hit and three when not. A clean beat with the clean phrasing dims every screen by 0.35 (the reply), shows Chen's line, and adds TRUST +3; a conditional phrasing lands the beat but is answered with silence. Either way the act firing costs DEBT +1 all round. A second failed window is blackout and the episode ends on an unanswered knock.
+- **S7**: the demonstration (pulse–pause–pulse on the beat schedule, visual pulse and 20 ms haptic, never audio); the Theorist's three phrasings; the Task 1 consent act for all three seats with the window closing on the third missed beat after the crew's first tap; "again" once from the Synaesthete; the Navigator's taps pinch the Task 2b streams toward one chord; the Synaesthete sees the crew's taps in one colour when all hit and three when not. A clean beat with the clean phrasing dims every screen by 0.35 (the reply), shows Chen's line, and adds TRUST +3; a conditional phrasing lands the beat but is answered with silence. Either way the act firing costs DEBT +1 all round. A second failed window is blackout and the episode ends on an unanswered knock.
 
 ### Done-criteria
 
@@ -745,7 +762,7 @@ Written 2026-10-10. Status: **built; the §7 done-criterion is met in Playwright
 ### Decisions taken (approved plan; confirm or overrule)
 
 1. **S2's read costs +1**, the scene's own cost line, not the 0.5 of a reflex read in §1. DEBT is an integer on the wire and reflex reads were out of Task 2.
-2. **S7 window**: three missed beats close it, with the 12-beat cap as backstop; the Synaesthete's "again" opens one more window. `act.ts` gained an optional `maxMisses`; Task 1's behaviour is unchanged without it.
+2. **S7 window**: three missed beats close it, counted from the crew's first tap (amended after three-phone run 1, below), with the 12-beat cap as backstop; the Synaesthete's "again" opens one more window. `act.ts` gained an optional `maxMisses`; Task 1's behaviour is unchanged without it.
 3. **DEBT +1 all round** is charged when the act fires, not per attempt.
 4. **The confirm re-read**: safe 0.92 at 660 000 ms and four failures at 0.02 / 0.98 at 89 000 ms.
 5. **S5 commit by a one-second hold** on the question, so the server knows the commit before it lands and the reply can precede it. A release before the second is a cancel.
